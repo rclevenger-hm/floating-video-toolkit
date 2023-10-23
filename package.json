@@ -1,0 +1,11 @@
+{
+  "name": "floating-video-toolkit",
+  "version": "1.20.0",
+  "private": true,
+  "description": "Floating video controls for Chromium browsers",
+  "scripts": {
+    "check": "node --check pip-core.js && node --check background.js && node --check content.js && node --check options.js",
+    "test": "node --test tests/*.test.cjs"
+  },
+  "engines": { "node": ">=22" }
+}
