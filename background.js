@@ -1,3 +1,5 @@
+importScripts("pip-core.js");
+
 // Service worker.
 //
 // PiP is toggled by injecting a self-contained function into the page. Injection
@@ -7,7 +9,12 @@
 // doesn't depend on the content script's world, and it dispatches DOM events so
 // the content script can layer its sticky/pulse behavior on top.
 
-function injectedToggle() {
+function injectedToggle(disabledHosts = [], tabHost = "") {
+  const hosts = [tabHost, location.hostname];
+  for (const origin of location.ancestorOrigins || []) {
+    try { hosts.push(new URL(origin).hostname); } catch (_) {}
+  }
+  if (disabledHosts.some(h => hosts.includes(h))) return {status: "disabled"};
   function pick() {
     const vids = Array.from(document.querySelectorAll("video"));
     const sized = vids.filter((v) => v.videoWidth > 0);
@@ -39,18 +46,23 @@ function injectedToggle() {
   })();
 }
 
-function callToggle(tabId) {
-  chrome.scripting
+async function callToggle(tabId) {
+  const tab = await chrome.tabs.get(tabId);
+  const {disabledHosts = []} = await chrome.storage.sync.get({disabledHosts: []});
+  const tabHost = hostOf(tab.url);
+  if (FloatingVideoCore.isDisabled(disabledHosts, [tabHost])) return {status: "disabled"};
+  return chrome.scripting
     .executeScript({
       target: { tabId, allFrames: true },
       func: injectedToggle,
+      args: [disabledHosts, tabHost],
     })
     .catch(() => {});
 }
 
 // Toolbar icon click -> float / unfloat.
 chrome.action.onClicked.addListener((tab) => {
-  if (tab?.id != null) callToggle(tab.id);
+  if (tab?.id != null) callToggle(tab.id).catch(() => {});
 });
 
 // Keyboard command (Alt+P by default; configurable at chrome://extensions/shortcuts).
@@ -58,18 +70,20 @@ chrome.commands.onCommand.addListener((command) => {
   if (command !== "toggle-pip") return;
   chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
     const tab = tabs[0];
-    if (tab?.id != null) callToggle(tab.id);
+    if (tab?.id != null) callToggle(tab.id).catch(() => {});
   });
 });
 
 // Per-tab count of ads the comfort layer muted/skipped, shown on the badge.
 const adCounts = new Map();
 
-chrome.runtime.onMessage.addListener((msg, sender) => {
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   if (tabId == null) return;
-  if (msg?.type === "FAN_OUT_PIP") {
-    callToggle(tabId);
+  if (msg?.type === "GET_TAB_HOST") {
+    sendResponse({host: hostOf(sender.tab?.url)});
+  } else if (msg?.type === "FAN_OUT_PIP") {
+    callToggle(tabId).catch(() => {});
   } else if (msg?.type === "AD_SKIPPED") {
     const n = (adCounts.get(tabId) || 0) + 1;
     adCounts.set(tabId, n);
@@ -197,13 +211,7 @@ function createMenu() {
 chrome.runtime.onInstalled.addListener(createMenu);
 chrome.runtime.onStartup.addListener(createMenu);
 
-function hostOf(url) {
-  try {
-    return new URL(url).hostname;
-  } catch (_) {
-    return "";
-  }
-}
+function hostOf(url) { return FloatingVideoCore.hostOf(url); }
 
 async function refreshMenu(tab) {
   const host = hostOf(tab?.url);

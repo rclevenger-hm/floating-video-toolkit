@@ -10,8 +10,14 @@
   if (window.__fpipLoaded) return;
   window.__fpipLoaded = true;
 
-  const host = location.hostname;
-  let enabled = true; // updated from storage below
+  const core = globalThis.FloatingVideoCore;
+  const host = core.hostOf(location.href);
+  let tabHost = "";
+  let disabledHosts = [];
+  let enabled = false; // Fail closed until settings and top-page policy arrive.
+  function policyHosts() {
+    return [host, tabHost, ...Array.from(location.ancestorOrigins || [], core.hostOf)];
+  }
   let userWantsPip = false; // sticky: keep floating across episode changes
   let reentering = false;
   let pulsing = false;
@@ -1443,8 +1449,9 @@
   );
 
   // ---- enabled state from storage (per-site toggle + ad-comfort) ----
-  function applyEnabled(disabledHosts) {
-    enabled = !(Array.isArray(disabledHosts) && disabledHosts.includes(host));
+  function applyEnabled(hosts) {
+    disabledHosts = Array.isArray(hosts) ? hosts : [];
+    enabled = !core.isDisabled(disabledHosts, policyHosts());
     if (enabled) {
       startKeepClear();
       if (adComfort) startAdWatch();
@@ -1484,8 +1491,12 @@
       ccPip: true,
       hidePaidOverlay: true,
     },
-    (res) => {
+    async (res) => {
       if (!res || chrome.runtime?.lastError) return; // context gone
+      try {
+        const policy = await chrome.runtime.sendMessage({type: "GET_TAB_HOST"});
+        tabHost = policy?.host || "";
+      } catch (_) { return; } // Retry by reloading the tab if the worker is unavailable.
       hidePaidOverlay = res.hidePaidOverlay !== false;
       adComfort = res.adComfort !== false;
       adSpeedMode = parseSpeedMode(res.adSpeed);
