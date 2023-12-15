@@ -33,21 +33,30 @@
   let adj = { ...ADJ_DEFAULTS }; // display adjustments (CSS-only, DRM-safe)
 
   // ---- find the video the user is actually watching ----
-  function getActiveVideo() {
-    const videos = Array.from(document.querySelectorAll("video"));
-    if (!videos.length) return null;
-    const playing = videos.filter(
-      (v) => !v.paused && v.readyState >= 2 && v.videoWidth > 0
-    );
-    const pool = (playing.length ? playing : videos).filter(
-      (v) => v.videoWidth > 0
-    );
-    const candidates = pool.length ? pool : videos;
-    candidates.sort(
-      (a, b) => b.videoWidth * b.videoHeight - a.videoWidth * a.videoHeight
-    );
-    return candidates[0];
+  let selectedVideo = null;
+  let selectedAt = 0;
+  function rememberVideo(event) {
+    if (!enabled || !event.isTrusted || !(event.target instanceof HTMLVideoElement)) return;
+    selectedVideo = event.target;
+    selectedAt = Date.now();
   }
+  document.addEventListener("pointerdown", rememberVideo, true);
+  document.addEventListener("contextmenu", rememberVideo, true);
+  function getActiveVideo() {
+    return core.pickVideo(document.querySelectorAll("video"), selectedVideo, selectedAt);
+  }
+  globalThis.__fpipController = {
+    snapshot() {
+      const video = getActiveVideo();
+      return {enabled, host, ancestors:policyHosts(), inPip:!!document.pictureInPictureElement,
+        candidate: enabled && video ? core.describeVideo(video, video === selectedVideo ? selectedAt : 0) : null};
+    },
+    async run(action) {
+      if (!enabled) return {status: "disabled"};
+      if (action !== "toggle-pip") return {status: "unsupported"};
+      return {status: await togglePip() ? "ok" : "unavailable"};
+    }
+  };
 
   // ---- strip the disable flag from one or all videos ----
   function stripFlag(video) {
@@ -360,10 +369,8 @@
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
       e.preventDefault();
-      // Act locally if this frame owns the video; otherwise reach other frames.
-      // (Doing both was the source of the on/off flash.)
-      if (getActiveVideo()) togglePip();
-      else chrome.runtime?.sendMessage?.({ type: "FAN_OUT_PIP" });
+      // Use the same single-owner route as toolbar and browser commands.
+      chrome.runtime.sendMessage({type: "FAN_OUT_PIP"}).catch(() => {});
     });
     hookButtonFade();
     document.documentElement.appendChild(btn);

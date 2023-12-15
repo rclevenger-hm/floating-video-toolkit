@@ -34,3 +34,19 @@ test('frame-side guard stops activation on an excluded embedded hostname', async
   const result=await vm.runInContext('injectedToggle(["blocked.example"], "top.example")',w.context);
   assert.equal(result.status,'disabled');
 });
+
+test('multi-frame activation probes once and only executes in the selected document', async()=>{
+  const results=[{frameId:0,documentId:'top',result:{host:'top.example',candidate:{playing:true,area:100,pixels:100}}},
+    {frameId:2,documentId:'child',result:{host:'player.example',candidate:{playing:true,area:400,pixels:400}}}];
+  const w=worker({results});
+  await vm.runInContext('callToggle(7)',w.context);
+  assert.equal(w.calls.length,2);
+  assert.equal(w.calls[0].target.allFrames,true);
+  assert.deepEqual(Array.from(w.calls[1].target.documentIds),['child']);
+  assert.equal(w.calls[1].target.allFrames,undefined);
+});
+test('simultaneous requests collapse to one frame action', async()=>{
+  const w=worker({results:[{frameId:0,result:{host:'top.example',candidate:{playing:true,area:100,pixels:100}}}]});
+  await Promise.all([vm.runInContext('callToggle(7)',w.context),vm.runInContext('callToggle(7)',w.context)]);
+  assert.equal(w.calls.length,2);
+});

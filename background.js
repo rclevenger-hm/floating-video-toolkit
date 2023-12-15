@@ -1,63 +1,41 @@
 importScripts("pip-core.js");
 
-// Service worker.
-//
-// PiP is toggled by injecting a self-contained function into the page. Injection
-// from a user action (toolbar click / keyboard command) preserves the user
-// gesture that requestPictureInPicture() requires -- a plain message does not,
-// which is why the old popup button failed. The function is self-contained so it
-// doesn't depend on the content script's world, and it dispatches DOM events so
-// the content script can layer its sticky/pulse behavior on top.
-
-function injectedToggle(disabledHosts = [], tabHost = "") {
+// Probe every accessible frame, then send the action to exactly one document.
+// Both functions execute in the content script's isolated world.
+function inspectFrame() {
+  return globalThis.__fpipController?.snapshot() || {host: location.hostname};
+}
+async function injectedToggle(disabledHosts = [], tabHost = "", action = "toggle-pip") {
   const hosts = [tabHost, location.hostname];
   for (const origin of location.ancestorOrigins || []) {
     try { hosts.push(new URL(origin).hostname); } catch (_) {}
   }
   if (disabledHosts.some(h => hosts.includes(h))) return {status: "disabled"};
-  function pick() {
-    const vids = Array.from(document.querySelectorAll("video"));
-    const sized = vids.filter((v) => v.videoWidth > 0);
-    const playing = sized.filter((v) => !v.paused);
-    const pool = playing.length ? playing : sized.length ? sized : vids;
-    pool.sort(
-      (a, b) => b.videoWidth * b.videoHeight - a.videoWidth * a.videoHeight
-    );
-    return pool[0];
-  }
-  (async () => {
-    try {
-      if (document.pictureInPictureElement) {
-        document.dispatchEvent(new CustomEvent("fpip:userexit"));
-        await document.exitPictureInPicture();
-        return;
-      }
-      const v = pick();
-      if (!v) return; // no video in this frame
-      try {
-        v.disablePictureInPicture = false;
-      } catch (_) {}
-      v.removeAttribute("disablepictureinpicture");
-      await v.requestPictureInPicture();
-      document.dispatchEvent(new CustomEvent("fpip:entered"));
-    } catch (e) {
-      console.warn("[Floating PiP] toggle:", e && e.message);
-    }
-  })();
+  const controller = globalThis.__fpipController;
+  if (!controller) return {status: "reload"};
+  if (!controller.snapshot().enabled) return {status: "disabled"};
+  return controller.run(action);
 }
-
-async function callToggle(tabId) {
-  const tab = await chrome.tabs.get(tabId);
-  const {disabledHosts = []} = await chrome.storage.sync.get({disabledHosts: []});
-  const tabHost = hostOf(tab.url);
-  if (FloatingVideoCore.isDisabled(disabledHosts, [tabHost])) return {status: "disabled"};
-  return chrome.scripting
-    .executeScript({
-      target: { tabId, allFrames: true },
-      func: injectedToggle,
-      args: [disabledHosts, tabHost],
-    })
-    .catch(() => {});
+const pendingActions = new Set();
+async function callToggle(tabId, action = "toggle-pip") {
+  if (pendingActions.has(tabId)) return {status: "busy"};
+  pendingActions.add(tabId);
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const {disabledHosts = []} = await chrome.storage.sync.get({disabledHosts: []});
+    const tabHost = hostOf(tab.url);
+    if (FloatingVideoCore.isDisabled(disabledHosts, [tabHost])) return {status: "disabled"};
+    const results = await chrome.scripting.executeScript({target:{tabId,allFrames:true},func:inspectFrame});
+    const chosen = FloatingVideoCore.chooseFrame(results, disabledHosts, tabHost);
+    if (!chosen) return {status: "no-video"};
+    // documentIds prevent a navigation between probe and action selecting a new page.
+    const target = chosen.documentId ? {tabId,documentIds:[chosen.documentId]} : {tabId,frameIds:[chosen.frameId]};
+    const replies = await chrome.scripting.executeScript({target,func:injectedToggle,args:[disabledHosts,tabHost,action]});
+    return replies[0]?.result || {status: "unavailable"};
+  } catch (error) {
+    console.warn("[Floating PiP] action:", error.message);
+    return {status: "unavailable"};
+  } finally { pendingActions.delete(tabId); }
 }
 
 // Toolbar icon click -> float / unfloat.
