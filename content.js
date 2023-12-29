@@ -387,25 +387,8 @@
     });
   }
 
-  // ---- keyboard shortcut in-page (real gesture, works cross-frame) ----
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      if (!enabled) return;
-      if (e.altKey && (e.code === "KeyP" || e.key.toLowerCase() === "p")) {
-        e.preventDefault();
-        togglePip();
-      }
-    },
-    true
-  );
-
-  // ---- messages from background / other frames ----
-  chrome.runtime?.onMessage?.addListener((msg) => {
-    if (msg && (msg.type === "TOGGLE_PIP" || msg.type === "FAN_OUT_PIP")) {
-      togglePip();
-    }
-  });
+  // Browser commands are the single source of truth for extension shortcuts.
+  // No hardcoded Alt+P listener: remapping in Chrome must remove the old binding.
 
   // Exposed for in-world callers; the toolbar/command path uses its own
   // self-contained injected toggle (see background.js) and signals us via the
