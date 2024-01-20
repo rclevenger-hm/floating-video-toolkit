@@ -19,7 +19,6 @@
     return [host, tabHost, ...Array.from(location.ancestorOrigins || [], core.hostOf)];
   }
   let userWantsPip = false; // sticky: keep floating across episode changes
-  let reentering = false;
   let pulsing = false;
   let showButton = false; // in-page floating PiP button (off by default)
   let autoPip = true; // auto-float when the tab is hidden (native autoPiP)
@@ -58,8 +57,24 @@
     }
   };
 
+  const adjustedStyles = FloatingVideoState.createStyleLedger();
+  const originalFlags = new Map();
+  function rememberFlags(video) {
+    if (!originalFlags.has(video)) originalFlags.set(video, {
+      disabled:video.getAttribute("disablepictureinpicture"), auto:video.autoPictureInPicture
+    });
+  }
+  function restoreFlags() {
+    for (const [video, original] of originalFlags) {
+      if (original.disabled === null) video.removeAttribute("disablepictureinpicture");
+      else video.setAttribute("disablepictureinpicture", original.disabled);
+      try { video.autoPictureInPicture = original.auto; } catch (_) {}
+    }
+    originalFlags.clear();
+  }
   // ---- strip the disable flag from one or all videos ----
   function stripFlag(video) {
+    rememberFlags(video);
     try {
       video.disablePictureInPicture = false;
     } catch (_) {}
@@ -80,18 +95,22 @@
     }
   }
   function teardownAll() {
-    try {
-      stopKeepClear();
-    } catch (_) {}
-    try {
-      stopAdWatch();
-    } catch (_) {}
-    try {
-      ssStop();
-    } catch (_) {}
-    try {
-      ccStop();
-    } catch (_) {}
+    enabled = false;
+    userWantsPip = false;
+    stopPulse();
+    stopKeepClear();
+    stopAdWatch();
+    ssStop();
+    ccStop();
+    syncAutoPipHandler();
+    adjustedStyles.restoreAll();
+    restoreFlags();
+    btn?.remove();
+    btn = null;
+    for (const id of ["fpip-style", "fpip-sharpen-svg", "fpip-cosmetic", "fpip-ad-style"]) document.getElementById(id)?.remove();
+    adOverlay?.remove();
+    adOverlay = null;
+    adOverlayLabel = null;
   }
 
   // ---- display adjustments: CSS filter/transform only, so DRM-safe ----
@@ -117,6 +136,7 @@
     if (!fe) {
       const NS = "http://www.w3.org/2000/svg";
       const svg = document.createElementNS(NS, "svg");
+      svg.id = "fpip-sharpen-svg";
       svg.setAttribute("width", "0");
       svg.setAttribute("height", "0");
       svg.style.position = "absolute";
@@ -138,19 +158,12 @@
   }
   function applyAdjust(active) {
     const on = !!active && adjustActive();
-    if (on && adj.sharpen > 0) ensureSharpen(adj.sharpen);
-    document.querySelectorAll("video").forEach((v) => {
-      if (v === active && on) {
-        v.style.filter = buildFilter();
-        v.style.transform = adj.zoom > 1 ? "scale(" + adj.zoom + ")" : "";
-        v.style.transformOrigin = "center center";
-        v.dataset.fpipAdjusted = "1";
-      } else if (v.dataset && v.dataset.fpipAdjusted) {
-        v.style.filter = ""; // only clear what we set
-        v.style.transform = "";
-        delete v.dataset.fpipAdjusted;
-      }
-    });
+    adjustedStyles.restoreExcept(on ? active : null);
+    if (!on) return;
+    if (adj.sharpen > 0) ensureSharpen(adj.sharpen);
+    adjustedStyles.set(active, "filter", buildFilter());
+    adjustedStyles.set(active, "transform", adj.zoom > 1 ? "scale(" + adj.zoom + ")" : "none");
+    adjustedStyles.set(active, "transform-origin", "center center");
   }
 
   // ---- auto-PiP on tab switch ----
@@ -160,13 +173,13 @@
   // attribute too as belt-and-suspenders for players that honor it.
   let autoPipHooked = false;
   function syncAutoPipHandler() {
-    if (autoPip && !autoPipHooked) {
+    if (enabled && autoPip && !autoPipHooked) {
       try {
         navigator.mediaSession.setActionHandler(
           "enterpictureinpicture",
           async () => {
             const v = getActiveVideo();
-            if (!v || document.pictureInPictureElement) return;
+            if (!enabled || !autoPip || !v || document.pictureInPictureElement) return;
             stripFlag(v);
             try {
               await v.requestPictureInPicture();
@@ -175,7 +188,7 @@
         );
         autoPipHooked = true;
       } catch (_) {} // action unsupported on this Chrome -> attribute-only
-    } else if (!autoPip && autoPipHooked) {
+    } else if ((!enabled || !autoPip) && autoPipHooked) {
       try {
         navigator.mediaSession.setActionHandler("enterpictureinpicture", null);
       } catch (_) {}
@@ -185,6 +198,7 @@
 
   // ---- maintain all per-video tweaks: strip flag, auto-PiP, adjustments ----
   function applyVideoTweaks() {
+    if (!enabled) return;
     syncAutoPipHandler();
     const active = autoPip || adjustActive() ? getActiveVideo() : null;
     document.querySelectorAll("video").forEach((v) => {
@@ -315,7 +329,7 @@
   document.addEventListener(
     "playing",
     (e) => {
-      if (!userWantsPip || !(e.target instanceof HTMLVideoElement)) return;
+      if (!enabled || !userWantsPip || !(e.target instanceof HTMLVideoElement)) return;
       const v = e.target;
       const cur = document.pictureInPictureElement;
       if (!cur) {
@@ -1453,14 +1467,7 @@
           once: true,
         });
     } else {
-      stopKeepClear();
-      stopAdWatch();
-      ssStop();
-      applyPaidOverlayHide(); // enabled=false -> removes the style
-      userWantsPip = false;
-      pulsing = false;
-      btn?.remove();
-      btn = null;
+      teardownAll();
     }
   }
 
