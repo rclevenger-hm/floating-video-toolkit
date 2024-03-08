@@ -1126,12 +1126,14 @@
 
   // ===== captions in PiP =====
   // Site captions are HTML overlays, which the PiP window can't show. Native
-  // text-track cues DO render inside the PiP window, so while floating we
+  // native PiP caption rendering varies by browser, so experimentally we
   // either (a) flip an existing loaded track to "showing", or (b) mirror the
   // site's on-screen caption DOM into live VTT cues on the video. Only active
   // while in PiP; everything is restored on exit. DRM-safe (no frame access).
   let ccPip = true;
   let ccTimer = null;
+  let ccGeneration = 0;
+  let ccAbort = null;
   let ccSaved = null; // [{t, mode}] original track modes to restore
   let ccVideo = null;
   let ccNative = null; // a real loaded track we flipped to "showing"
@@ -1225,7 +1227,7 @@
   function ytIsHere() {
     return /(^|\.)youtube(-nocookie)?\.com$/.test(host);
   }
-  async function ytLoadCaptions(v) {
+  async function ytLoadCaptions(v, generation, signal) {
     if (!ytIsHere()) return false;
     const ccBtn = document.querySelector(".ytp-subtitles-button");
     if (ccBtn && ccBtn.getAttribute("aria-pressed") === "false") {
@@ -1245,7 +1247,7 @@
       cues = null;
       try {
         const html = await (
-          await fetch(location.href, { credentials: "same-origin" })
+          await fetch(location.href, { credentials: "same-origin", signal })
         ).text();
         const m = html.match(/"captionTracks":(\[.*?\])\s*,\s*"/);
         if (m) {
@@ -1263,7 +1265,7 @@
           if (pick && pick.baseUrl) {
             const data = await (
               await fetch(pick.baseUrl + "&fmt=json3", {
-                credentials: "same-origin",
+                credentials: "same-origin", signal,
               })
             ).json();
             cues = [];
@@ -1287,7 +1289,7 @@
       }
       ytCcCache = { [id]: cues }; // single-entry cache
     }
-    if (!cues) return false;
+    if (!cues || signal.aborted || generation !== ccGeneration || !enabled || !ccPip || ccVideo !== v) return false;
     const tr = ccEnsureTrack(v);
     ccClearCues(tr);
     for (const c of cues) {
@@ -1366,8 +1368,11 @@
   }
 
   function ccStart(v) {
-    if (!ccPip || !enabled || ccTimer || !(v instanceof HTMLVideoElement))
-      return;
+    if (!ccPip || !enabled || !(v instanceof HTMLVideoElement)) return;
+    if (ccTimer && ccVideo === v) return;
+    ccStop();
+    ccAbort = new AbortController();
+    const generation = ccGeneration;
     ccVideo = v;
     ccSaved = [];
     ccNative = null;
@@ -1392,7 +1397,7 @@
     if (ccNative) {
       ccMode = "native";
       try {
-        ccNative.mode = "showing"; // browser renders these inside the PiP window
+        ccNative.mode = "showing"; // Native PiP rendering remains browser-dependent.
       } catch (_) {}
       console.log("[Floating PiP] PiP captions: native track (re-asserting)");
     } else {
@@ -1400,9 +1405,9 @@
       console.log("[Floating PiP] PiP captions: mirroring on-page captions");
       if (ytIsHere()) {
         // YouTube unrenders its overlay in PiP; load the real track instead.
-        ytLoadCaptions(v)
+        ytLoadCaptions(v, generation, ccAbort.signal)
           .then((ok) => {
-            if (ok && ccTimer && ccVideo === v) {
+            if (ok && generation === ccGeneration && ccTimer && ccVideo === v) {
               ccMode = "yt";
               ccFoundAny = true; // suppress the mirror "nothing found" warning
             }
@@ -1419,6 +1424,9 @@
     }, 300);
   }
   function ccStop() {
+    ccGeneration++;
+    ccAbort?.abort();
+    ccAbort = null;
     if (ccTimer) clearInterval(ccTimer);
     ccTimer = null;
     ccNative = null;
@@ -1436,7 +1444,7 @@
       if (tr) {
         ccClearCues(tr);
         try {
-          tr.mode = "hidden";
+          tr.mode = "disabled";
         } catch (_) {}
       }
       ccVideo = null;
