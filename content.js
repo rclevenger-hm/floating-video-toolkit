@@ -902,7 +902,8 @@
   let ssQuietSince = 0;
   let ssPeak = 0.05; // decaying rolling peak -> adaptive threshold
   let ssState = "talk";
-  const ssNodes = new WeakMap(); // video -> {analyser, buf}
+  const ssNodes = new WeakMap();
+  const ssConnections = new Set(); // video -> {analyser, buf}
   // Non-DRM hosts where the WebAudio tap is safe. Plex personal libraries are
   // DRM-free (and the mediaKeys guard still skips any DRM'd Plex FAST content).
   // Dropout (Vimeo OTT) is DRM-free HLS; its player iframe is embed.vhx.tv.
@@ -942,7 +943,15 @@
       return null; // never touch DRM audio
     }
     let rec = ssNodes.get(v);
-    if (rec) return rec;
+    if (rec) {
+      if (rec.bypassed) {
+        rec.src.disconnect();
+        rec.src.connect(rec.analyser);
+        rec.analyser.connect(ssCtx.destination);
+        rec.bypassed = false;
+      }
+      return rec;
+    }
     // Tapping a cross-origin stream (without CORS opt-in) silences it
     // irreversibly -- refuse instead of risking the audio. blob:/data: (MSE)
     // and same-origin URLs are safe; crossOrigin-attributed elements untaint.
@@ -971,7 +980,8 @@
       analyser.fftSize = 2048;
       src.connect(analyser);
       analyser.connect(ssCtx.destination); // keep audio audible
-      rec = { analyser, buf: new Uint8Array(analyser.frequencyBinCount) };
+      rec = { src, analyser, buf: new Uint8Array(analyser.frequencyBinCount), bypassed:false };
+      ssConnections.add(rec);
       ssNodes.set(v, rec);
       console.log("[Floating PiP] smart speed: analyser attached");
       return rec;
@@ -1012,6 +1022,7 @@
     // stop adopting and hold our target.
     const cur = v.playbackRate;
     if (v !== ssDriven) {
+      ssRestoreRate();
       ssBase = Math.abs(cur - 1) > 0.01 ? cur : null; // pre-set speed on attach
       ssLastSet = null;
       ssExt = [];
@@ -1093,16 +1104,28 @@
     }
     ssTimer = setInterval(ssTick, 150);
   }
+  function ssRestoreRate() {
+    if (ssDriven && ssLastSet != null && Math.abs(ssDriven.playbackRate - ssLastSet) < 0.01) {
+      try { ssDriven.playbackRate = ssBase ?? 1; } catch (_) {}
+    }
+    ssDriven = null;
+    ssLastSet = null;
+  }
   function ssStop() {
     if (ssTimer) clearInterval(ssTimer);
     ssTimer = null;
-    if (ssDriven) {
+    ssRestoreRate();
+    // A MediaElementSource cannot be detached back to native playback. Bypass
+    // the analyser, keeping the destination connected so disabling stays audible.
+    for (const rec of ssConnections) {
+      if (rec.bypassed) continue;
       try {
-        ssDriven.playbackRate = ssBase ?? 1; // hand back the USER'S pace
+        rec.src.disconnect();
+        rec.analyser.disconnect();
+        rec.src.connect(ssCtx.destination);
+        rec.bypassed = true;
       } catch (_) {}
-      ssDriven = null;
     }
-    ssLastSet = null;
   }
 
   // ===== cosmetic: hide YouTube's "Includes paid promotion" overlay =====
