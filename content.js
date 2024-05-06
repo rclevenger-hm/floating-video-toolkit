@@ -720,13 +720,13 @@
     }
     showAdOverlay();
   }
-  function exitAd() {
+  function exitAd(completed = true) {
     if (!inAd) return;
     inAd = false;
     const secs = Math.round((Date.now() - inAdSince) / 1000);
     console.log("[Floating PiP] ad ended (" + secs + "s on screen)");
     try {
-      chrome.runtime?.sendMessage?.({ type: "AD_SKIPPED" });
+      if (completed) chrome.runtime?.sendMessage?.({ type: "AD_SESSION_ENDED" })?.catch(() => {});
     } catch (_) {}
     if (adRateTimer) {
       clearInterval(adRateTimer);
@@ -876,7 +876,7 @@
       clearInterval(adCheckTimer);
       adCheckTimer = null;
     }
-    exitAd();
+    exitAd(false);
   }
 
   // ===== smart speed: dialogue-aware playback rate (opt-in) =====

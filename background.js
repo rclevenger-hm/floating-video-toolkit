@@ -54,6 +54,7 @@ chrome.commands.onCommand.addListener((command) => {
 
 // Per-tab count of ads the comfort layer muted/skipped, shown on the badge.
 const adCounts = new Map();
+let statsWrite = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
@@ -62,7 +63,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     sendResponse({host: hostOf(sender.tab?.url)});
   } else if (msg?.type === "FAN_OUT_PIP") {
     callToggle(tabId).catch(() => {});
-  } else if (msg?.type === "AD_SKIPPED") {
+  } else if (msg?.type === "AD_SESSION_ENDED") {
     const n = (adCounts.get(tabId) || 0) + 1;
     adCounts.set(tabId, n);
     chrome.action.setBadgeBackgroundColor({ tabId, color: "#2d6cdf" });
@@ -70,11 +71,11 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     // Persistent per-host total for the status page.
     const host = hostOf(sender.tab?.url);
     if (host) {
-      chrome.storage.local.get({ adStatsByHost: {} }, (r) => {
-        const m = r.adStatsByHost || {};
-        m[host] = (m[host] || 0) + 1;
-        chrome.storage.local.set({ adStatsByHost: m });
-      });
+      statsWrite = statsWrite.then(async () => {
+        const {adStatsByHost = {}} = await chrome.storage.local.get({adStatsByHost:{}});
+        adStatsByHost[host] = (adStatsByHost[host] || 0) + 1;
+        await chrome.storage.local.set({adStatsByHost});
+      }).catch(error => console.warn("[Floating PiP] statistics:",error.message));
     }
   }
 });
