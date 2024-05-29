@@ -29,6 +29,8 @@
     sharpen: 0,
     zoom: 1,
   };
+  let viewSettings = {...core.VIEW_DEFAULTS};
+  let layout = null;
   let adj = { ...ADJ_DEFAULTS }; // display adjustments (CSS-only, DRM-safe)
 
   // ---- find the video the user is actually watching ----
@@ -42,7 +44,7 @@
   document.addEventListener("pointerdown", rememberVideo, true);
   document.addEventListener("contextmenu", rememberVideo, true);
   function getActiveVideo() {
-    return core.pickVideo(document.querySelectorAll("video"), selectedVideo, selectedAt);
+    return layout?.video || core.pickVideo(document.querySelectorAll("video"), selectedVideo, selectedAt);
   }
   globalThis.__fpipController = {
     snapshot() {
@@ -103,6 +105,7 @@
     ssStop();
     ccStop();
     syncAutoPipHandler();
+    layout?.close();
     adjustedStyles.restoreAll();
     restoreFlags();
     btn?.remove();
@@ -120,7 +123,7 @@
       adj.contrast !== 1 ||
       adj.saturation !== 1 ||
       adj.sharpen > 0 ||
-      adj.zoom > 1
+      adj.zoom > 1 || viewSettings.fit !== "original" || viewSettings.panX !== 50 || viewSettings.panY !== 50 || !!layout?.mode
     );
   }
   function buildFilter() {
@@ -163,7 +166,10 @@
     if (adj.sharpen > 0) ensureSharpen(adj.sharpen);
     adjustedStyles.set(active, "filter", buildFilter());
     adjustedStyles.set(active, "transform", adj.zoom > 1 ? "scale(" + adj.zoom + ")" : "none");
-    adjustedStyles.set(active, "transform-origin", "center center");
+    adjustedStyles.set(active, "transform-origin", viewSettings.panX + "% " + viewSettings.panY + "%");
+    adjustedStyles.set(active, "object-fit", ({original:"contain",fit:"contain",fill:"cover",stretch:"fill"})[viewSettings.fit]);
+    adjustedStyles.set(active, "object-position", viewSettings.panX + "% " + viewSettings.panY + "%");
+    adjustedStyles.set(active, "clip-path", adj.zoom > 1 ? "inset(" + ((adj.zoom - 1) / adj.zoom * 50) + "%)" : "none");
   }
 
   // ---- auto-PiP on tab switch ----
@@ -208,6 +214,7 @@
       } catch (_) {}
     });
     applyAdjust(active);
+    layout?.render();
   }
 
   // ---- keep the flag clear: ads/players love to re-set it ----

@@ -43,7 +43,22 @@
     return eligible.find(item => item.result.inPip) || eligible.filter(item => item.result.candidate)
       .sort((a,b) => compareCandidates({...a.result.candidate, frameId:a.frameId}, {...b.result.candidate, frameId:b.frameId}))[0] || null;
   }
-  const api = {hostOf, normalizeHost, isDisabled, compareCandidates, describeVideo, pickVideo, chooseFrame};
+  const VIEW_DEFAULTS = {fit:"original",ratio:"auto",panX:50,panY:50,miniWidth:420,corner:4,miniKeys:true};
+  function clamp(value, min, max, fallback) {
+    const n = Number(value);
+    return Number.isFinite(n) ? Math.min(max,Math.max(min,n)) : fallback;
+  }
+  function normalizeView(value = {}) {
+    return {fit:["original","fit","fill","stretch"].includes(value.fit) ? value.fit : "original",
+      ratio:["auto","16:9","21:9","32:9","4:3"].includes(value.ratio) ? value.ratio : "auto",
+      panX:clamp(value.panX,0,100,50),panY:clamp(value.panY,0,100,50),
+      miniWidth:clamp(value.miniWidth,240,960,420),corner:Math.round(clamp(value.corner,1,4,4)),miniKeys:value.miniKeys !== false};
+  }
+  function aspectRatio(value, fallback = 16/9) {
+    const pair = String(value).split(":").map(Number);
+    return pair.length === 2 && pair[0] > 0 && pair[1] > 0 ? pair[0]/pair[1] : fallback || 16/9;
+  }
+  const api = {VIEW_DEFAULTS, normalizeView, aspectRatio, clamp, hostOf, normalizeHost, isDisabled, compareCandidates, describeVideo, pickVideo, chooseFrame};
   root.FloatingVideoCore = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);
