@@ -26,6 +26,63 @@
         "mac": "Alt+P"
       },
       "description": "Toggle floating Picture-in-Picture"
+    },
+    "play-pause": {
+      "suggested_key": {
+        "default": "Alt+Shift+P"
+      },
+      "description": "Play or pause the selected video"
+    },
+    "pause": {
+      "description": "Pause the selected video"
+    },
+    "play": {
+      "description": "Play the selected video"
+    },
+    "toggle-mute": {
+      "suggested_key": {
+        "default": "Alt+Shift+M"
+      },
+      "description": "Mute or unmute the selected video"
+    },
+    "mute": {
+      "description": "Mute the selected video"
+    },
+    "unmute": {
+      "description": "Unmute the selected video"
+    },
+    "toggle-cinema": {
+      "suggested_key": {
+        "default": "Alt+Shift+F"
+      },
+      "description": "Toggle ultrawide cinema view (in-page)"
+    },
+    "toggle-mini": {
+      "description": "Toggle mini-player (in-page)"
+    },
+    "cycle-fit": {
+      "description": "Cycle original, fit, fill, and stretch"
+    },
+    "zoom-in": {
+      "description": "Increase video crop zoom"
+    },
+    "zoom-out": {
+      "description": "Decrease video crop zoom"
+    },
+    "reset-view": {
+      "description": "Reset video crop and fit"
+    },
+    "snap-1": {
+      "description": "Mini-player: top left corner (in-page)"
+    },
+    "snap-2": {
+      "description": "Mini-player: top right corner (in-page)"
+    },
+    "snap-3": {
+      "description": "Mini-player: bottom left corner (in-page)"
+    },
+    "snap-4": {
+      "description": "Mini-player: bottom right corner (in-page)"
     }
   },
   "content_scripts": [
@@ -38,6 +95,7 @@
       "js": [
         "pip-core.js",
         "page-state.js",
+        "player-layout.js",
         "content.js"
       ]
     }

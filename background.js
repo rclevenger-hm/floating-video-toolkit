@@ -38,17 +38,30 @@ async function callToggle(tabId, action = "toggle-pip") {
   } finally { pendingActions.delete(tabId); }
 }
 
+const STATUS_LABELS = {
+  disabled:"Disabled on this site", "no-video":"Start a video, then try again. Reload the page after installing.",
+  unavailable:"Unable to control this player. Check site access and reload the page.",
+  "embedded-layout":"In-page layouts require a top-page video. Use native PiP for embedded players.",
+  reload:"Reload the page to enable Floating Video.", busy:"A video action is already running."
+};
+async function performAction(tabId, action = "toggle-pip") {
+  const result = await callToggle(tabId, action);
+  const message = result.status === "ok" ? "Floating Video — ready" : STATUS_LABELS[result.status] || "Video action unavailable";
+  await chrome.action.setTitle({tabId,title:message});
+  return result;
+}
+
 // Toolbar icon click -> float / unfloat.
 chrome.action.onClicked.addListener((tab) => {
-  if (tab?.id != null) callToggle(tab.id).catch(() => {});
+  if (tab?.id != null) performAction(tab.id);
 });
 
 // Keyboard command (Alt+P by default; configurable at chrome://extensions/shortcuts).
 chrome.commands.onCommand.addListener((command) => {
-  if (command !== "toggle-pip") return;
+  if (!chrome.runtime.getManifest().commands[command]) return;
   chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
     const tab = tabs[0];
-    if (tab?.id != null) callToggle(tab.id).catch(() => {});
+    if (tab?.id != null) performAction(tab.id, command);
   });
 });
 
@@ -62,7 +75,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "GET_TAB_HOST") {
     sendResponse({host: hostOf(sender.tab?.url)});
   } else if (msg?.type === "FAN_OUT_PIP") {
-    callToggle(tabId).catch(() => {});
+    performAction(tabId).then(sendResponse);
+    return true;
   } else if (msg?.type === "AD_SESSION_ENDED") {
     const n = (adCounts.get(tabId) || 0) + 1;
     adCounts.set(tabId, n);

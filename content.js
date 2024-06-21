@@ -49,15 +49,55 @@
   globalThis.__fpipController = {
     snapshot() {
       const video = getActiveVideo();
-      return {enabled, host, ancestors:policyHosts(), inPip:!!document.pictureInPictureElement,
+      return {enabled, host, ancestors:policyHosts(), inPip:!!document.pictureInPictureElement, inLayout:!!layout?.mode,
         candidate: enabled && video ? core.describeVideo(video, video === selectedVideo ? selectedAt : 0) : null};
     },
-    async run(action) {
-      if (!enabled) return {status: "disabled"};
-      if (action !== "toggle-pip") return {status: "unsupported"};
-      return {status: await togglePip() ? "ok" : "unavailable"};
-    }
+    run:runAction
   };
+
+  async function runAction(action) {
+    if (!enabled) return {status:"disabled"};
+    if (action === "toggle-pip") {
+      layout?.close();
+      return {status:await togglePip() ? "ok" : "unavailable"};
+    }
+    const video = document.pictureInPictureElement || getActiveVideo();
+    if (!video) return {status:"no-video"};
+    try {
+      if (action === "play-pause") { if (video.paused) await video.play(); else video.pause(); }
+      else if (action === "play") await video.play();
+      else if (action === "pause") video.pause();
+      else if (["toggle-mute","mute","unmute"].includes(action)) {
+        video.muted = action === "toggle-mute" ? !video.muted : action === "mute";
+        if (inAd && adVideo === video) prevMuted = video.muted;
+      } else if (["toggle-mini","toggle-cinema"].includes(action) || /^snap-[1-4]$/.test(action)) {
+        if (window.self !== window.top) return {status:"embedded-layout"};
+        if (document.pictureInPictureElement) await document.exitPictureInPicture();
+        if (action.startsWith("snap-")) {
+          viewSettings.corner = Number(action.slice(-1));
+          layout.open("mini",viewSettings.corner);
+          await chrome.storage.sync.set({viewSettings});
+        } else layout.toggle(action === "toggle-mini" ? "mini" : "cinema");
+      } else if (action === "close-layout") layout.close();
+      else if (action === "cycle-fit") {
+        const modes=["original","fit","fill","stretch"];
+        viewSettings.fit=modes[(modes.indexOf(viewSettings.fit)+1)%modes.length];
+        await chrome.storage.sync.set({viewSettings});
+      } else if (action === "zoom-in" || action === "zoom-out") {
+        adj.zoom=core.clamp(Math.round((adj.zoom+(action === "zoom-in" ? 0.1 : -0.1))*100)/100,1,3,1);
+        await chrome.storage.sync.set({videoAdjust:adj});
+      } else if (action === "reset-view") {
+        viewSettings={...viewSettings,fit:"original",ratio:"auto",panX:50,panY:50};
+        adj.zoom=1;
+        await chrome.storage.sync.set({viewSettings,videoAdjust:adj});
+      } else return {status:"unsupported"};
+      applyVideoTweaks();
+      return {status:"ok"};
+    } catch (error) {
+      console.warn("[Floating PiP] player action:",error.message);
+      return {status:"unavailable"};
+    }
+  }
 
   const adjustedStyles = FloatingVideoState.createStyleLedger();
   const originalFlags = new Map();
@@ -1509,6 +1549,17 @@
     }
   }
 
+  layout = FloatingVideoLayout.create({getVideo:getActiveVideo,getSettings:()=>viewSettings,onAction:runAction});
+  document.addEventListener("keydown", event => {
+    if (!enabled || !layout.mode || event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
+    const target=event.composedPath()[0];
+    if (target?.isContentEditable || target?.closest?.("input,textarea,select,[role=textbox]")) return;
+    if (event.key === "Escape") { event.preventDefault(); layout.close(); applyVideoTweaks(); }
+    else if (viewSettings.miniKeys && /^[1-4]$/.test(event.key)) {
+      event.preventDefault(); runAction("snap-"+event.key);
+    }
+  }, true);
+
   function parseSpeedMode(val) {
     return val === "auto" || val == null ? "auto" : Number(val) || "auto";
   }
@@ -1520,6 +1571,7 @@
       autoPip: true,
       showButton: false,
       videoAdjust: ADJ_DEFAULTS,
+      viewSettings: core.VIEW_DEFAULTS,
       smartSpeed: false,
       smartSpeedRates: { talk: 1.25, quiet: 1.5 },
       ssExtraHosts: [],
@@ -1538,6 +1590,7 @@
       autoPip = res.autoPip !== false;
       showButton = res.showButton === true;
       adj = { ...ADJ_DEFAULTS, ...(res.videoAdjust || {}) };
+      viewSettings=core.normalizeView(res.viewSettings);
       smartSpeed = res.smartSpeed === true;
       ssRates = { talk: 1.25, quiet: 1.5, ...(res.smartSpeedRates || {}) };
       ssExtraHosts = Array.isArray(res.ssExtraHosts) ? res.ssExtraHosts : [];
@@ -1565,6 +1618,10 @@
       if (changes.showButton) {
         showButton = changes.showButton.newValue === true;
         if (enabled) ensureButton();
+      }
+      if (changes.viewSettings) {
+        viewSettings=core.normalizeView(changes.viewSettings.newValue);
+        if (enabled) applyVideoTweaks();
       }
       if (changes.videoAdjust) {
         adj = { ...ADJ_DEFAULTS, ...(changes.videoAdjust.newValue || {}) };

@@ -40,7 +40,7 @@
     if (isDisabled(disabledHosts, [tabHost])) return null;
     const eligible = results.filter(item => item.result && !isDisabled(disabledHosts,
       [item.result.host, ...(item.result.ancestors || [])]));
-    return eligible.find(item => item.result.inPip) || eligible.filter(item => item.result.candidate)
+    return eligible.find(item => item.result.inPip) || eligible.find(item => item.result.inLayout) || eligible.filter(item => item.result.candidate)
       .sort((a,b) => compareCandidates({...a.result.candidate, frameId:a.frameId}, {...b.result.candidate, frameId:b.frameId}))[0] || null;
   }
   const VIEW_DEFAULTS = {fit:"original",ratio:"auto",panX:50,panY:50,miniWidth:420,corner:4,miniKeys:true};
