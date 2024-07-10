@@ -1,257 +1,67 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <title>Floating Video — Status</title>
-    <style>
-      :root {
-        color-scheme: dark;
-      }
-      body {
-        margin: 0;
-        padding: 24px;
-        max-width: 760px;
-        margin: 0 auto;
-        font: 14px/1.5 system-ui, sans-serif;
-        background: #16161a;
-        color: #ececf0;
-      }
-      h1 {
-        font-size: 18px;
-        margin: 0 0 4px;
-      }
-      .sub {
-        color: #9a9aa2;
-        margin: 0 0 24px;
-      }
-      h2 {
-        font-size: 13px;
-        text-transform: uppercase;
-        letter-spacing: 0.04em;
-        color: #9a9aa2;
-        margin: 28px 0 10px;
-      }
-      .card {
-        background: #1f1f25;
-        border: 1px solid #2c2c34;
-        border-radius: 10px;
-        padding: 16px;
-      }
-      .row {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        margin: 8px 0;
-      }
-      label {
-        cursor: pointer;
-      }
-      select,
-      button {
-        font: inherit;
-        color: #ececf0;
-        background: #2a2a32;
-        border: 1px solid #3a3a44;
-        border-radius: 7px;
-        padding: 6px 10px;
-        cursor: pointer;
-      }
-      button.primary {
-        background: #2d6cdf;
-        border-color: #2d6cdf;
-      }
-      button.danger {
-        background: #3a2230;
-        border-color: #6a2a44;
-        color: #f2b8cd;
-      }
-      table {
-        width: 100%;
-        border-collapse: collapse;
-      }
-      th,
-      td {
-        text-align: left;
-        padding: 8px 10px;
-        border-bottom: 1px solid #2c2c34;
-        font-size: 13px;
-      }
-      th {
-        color: #9a9aa2;
-        font-weight: 600;
-      }
-      td.num {
-        text-align: right;
-        font-variant-numeric: tabular-nums;
-      }
-      .pill {
-        display: inline-block;
-        padding: 1px 8px;
-        border-radius: 999px;
-        font-size: 12px;
-        background: #24303f;
-        color: #8fb8ff;
-      }
-      .muted {
-        color: #6f6f78;
-      }
-      .actions {
-        display: flex;
-        gap: 6px;
-      }
-      .actions button {
-        padding: 4px 8px;
-        font-size: 12px;
-      }
-      .empty {
-        color: #6f6f78;
-        padding: 14px 4px;
-      }
-      .foot {
-        margin-top: 28px;
-        display: flex;
-        gap: 10px;
-        flex-wrap: wrap;
-      }
-    </style>
-  </head>
-  <body>
-    <h1>Floating Video (PiP)</h1>
-    <p class="sub">
-      Status &amp; learned data. Floating works on any site; the ad-comfort layer
-      learns per site and is shown below.
-    </p>
-
-    <h2>Global settings</h2>
-    <div class="card">
-      <div class="row">
-        <input type="checkbox" id="autoPip" />
-        <label for="autoPip">Auto-float (PiP) when I switch away from the tab</label>
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Floating Video Toolkit — Settings</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <header><div class="brand"><img src="icon48.png" width="44" height="44" alt=""><div><span class="eyebrow">YOUR VIDEO, YOUR SPACE</span><h1>Floating Video Toolkit</h1></div></div><span class="version" id="version"></span></header>
+  <p class="intro">Keep watching while you work. Choose how your video fits, where it floats, and which controls stay within reach.</p>
+  <nav aria-label="Settings sections"><a href="#watch">Watching</a><a href="#ultrawide">Ultrawide</a><a href="#shortcuts">Shortcuts</a><a href="#sites">Sites</a><a href="#experimental">Experiments</a></nav>
+  <p id="saveStatus" role="status" aria-live="polite">Settings are saved automatically.</p>
+  <main>
+    <section id="watch" class="card"><div class="section-title"><h2>Watching</h2><span class="pill">Everyday controls</span></div>
+      <p class="hint">Use the toolbar icon to toggle native Picture-in-Picture. Click a video first to prefer it on a page with several players.</p>
+      <label class="toggle"><input type="checkbox" id="autoPip"><span>Float when I switch tabs<small>Uses Chrome’s automatic PiP when the site and browser allow it.</small></span></label>
+      <label class="toggle"><input type="checkbox" id="showButton"><span>Show a PiP button on the page<small>Appears near the top edge and when focused with the keyboard.</small></span></label>
+      <label class="toggle"><input type="checkbox" id="hidePaidOverlay"><span>Hide YouTube’s paid-promotion overlay</span></label>
+    </section>
+    <section id="ultrawide" class="card"><div class="section-title"><h2>Ultrawide &amp; mini-player</h2><span class="pill">In-page</span></div>
+      <p class="hint">Cinema view fills the tab. The mini-player stays in a page corner. Native PiP floats above other apps; Chrome controls its position and does not inherit these crops or filters.</p>
+      <div class="field-grid">
+        <label>Video fit<select id="view-fit"><option value="original">Original</option><option value="fit">Fit — show the whole frame</option><option value="fill">Fill — crop the edges</option><option value="stretch">Stretch — distort to fit</option></select></label>
+        <label>Player shape<select id="view-ratio"><option value="auto">Auto</option><option value="16:9">16:9 — widescreen</option><option value="21:9">21:9 — ultrawide</option><option value="32:9">32:9 — super ultrawide</option><option value="4:3">4:3 — classic</option></select></label>
+        <label>Mini-player width<select id="view-miniWidth"><option value="320">Small · 320 px</option><option value="420">Medium · 420 px</option><option value="560">Large · 560 px</option><option value="720">Extra large · 720 px</option></select></label>
+        <label>Default corner<select id="view-corner"><option value="1">1 · Top left</option><option value="2">2 · Top right</option><option value="3">3 · Bottom left</option><option value="4">4 · Bottom right</option></select></label>
       </div>
-      <div class="row">
-        <input type="checkbox" id="showButton" />
-        <label for="showButton">Show floating PiP button on the page</label>
-      </div>
-      <div class="row">
-        <input type="checkbox" id="ccPip" />
-        <label for="ccPip">Show captions in the floating (PiP) window</label>
-      </div>
-      <div class="row">
-        <input type="checkbox" id="hidePaidOverlay" />
-        <label for="hidePaidOverlay"
-          >Hide YouTube’s “Includes paid promotion” overlay</label
-        >
-      </div>
-      <div class="row">
-        <input type="checkbox" id="adComfort" />
-        <label for="adComfort">Mute &amp; skip ads</label>
-      </div>
-      <div class="row">
-        <label for="adSpeed">Ad fast-forward speed</label>
-        <select id="adSpeed">
-          <option value="auto">Auto (smart)</option>
-          <option value="2">2×</option>
-          <option value="3">3×</option>
-          <option value="5">5×</option>
-          <option value="16">16× (max)</option>
-        </select>
-        <span class="muted" id="speedNote"></span>
-      </div>
-    </div>
-
-    <h2>Per-site</h2>
-    <div class="card">
-      <table id="sitesTable">
-        <thead>
-          <tr>
-            <th>Site</th>
-            <th>Ad speed learned</th>
-            <th class="num">Ads skipped</th>
-            <th>Floating</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="sitesBody"></tbody>
-      </table>
-      <div class="empty" id="sitesEmpty" hidden>
-        Nothing learned yet — watch something with ads.
-      </div>
-    </div>
-
-    <h2>Smart speed (YouTube, Plex, Dropout)</h2>
-    <div class="card">
-      <div class="row">
-        <input type="checkbox" id="smartSpeed" />
-        <label for="smartSpeed">Dialogue-aware playback speed</label>
-      </div>
-      <div class="row">
-        <label for="ssTalk">During dialogue</label>
-        <select id="ssTalk">
-          <option value="1">1×</option>
-          <option value="1.1">1.1×</option>
-          <option value="1.25">1.25×</option>
-          <option value="1.5">1.5×</option>
-        </select>
-        <label for="ssQuiet">When quiet</label>
-        <select id="ssQuiet">
-          <option value="1.25">1.25×</option>
-          <option value="1.5">1.5×</option>
-          <option value="1.75">1.75×</option>
-          <option value="2">2×</option>
-        </select>
-      </div>
-      <div class="hint" style="color: #6f6f78; font-size: 12px; margin-top: 8px">
-        Watches speech-band audio energy: talking → dialogue speed, sustained
-        quiet → faster. DRM-free sites only (YouTube, Plex, Dropout; add others
-        via right-click → “Smart speed: allow this site”) — analyzing DRM audio
-        (Paramount+, Hulu, Disney+) would permanently silence it, so it never
-        attaches there. Loud music counts as “dialogue” (it’s volume-based, not
-        true speech recognition). Pauses during ads.
-      </div>
-    </div>
-
-    <h2>Display adjustments (all sites, incl. DRM)</h2>
-    <div class="card">
-      <div class="row">
-        <label style="width: 90px">Brightness</label>
-        <input type="range" id="adj-brightness" min="0.5" max="1.5" step="0.05" />
-        <span class="muted" id="val-brightness"></span>
-      </div>
-      <div class="row">
-        <label style="width: 90px">Contrast</label>
-        <input type="range" id="adj-contrast" min="0.5" max="1.5" step="0.05" />
-        <span class="muted" id="val-contrast"></span>
-      </div>
-      <div class="row">
-        <label style="width: 90px">Saturation</label>
-        <input type="range" id="adj-saturation" min="0" max="2" step="0.05" />
-        <span class="muted" id="val-saturation"></span>
-      </div>
-      <div class="row">
-        <label style="width: 90px">Sharpness</label>
-        <input type="range" id="adj-sharpen" min="0" max="1" step="0.05" />
-        <span class="muted" id="val-sharpen"></span>
-      </div>
-      <div class="row">
-        <label style="width: 90px">Zoom / crop</label>
-        <input type="range" id="adj-zoom" min="1" max="1.3" step="0.01" />
-        <span class="muted" id="val-zoom"></span>
-      </div>
-      <div class="row">
-        <button id="adjReset">Reset adjustments</button>
-        <span class="muted">Applies live to the active video on any site.</span>
-      </div>
-    </div>
-
-    <h2>Learned YouTube skip selectors</h2>
-    <div class="card">
-      <div id="skipList"></div>
-    </div>
-
-    <div class="foot">
-      <button class="danger" id="resetAll">Reset all learned data</button>
-    </div>
-
-    <script src="options.js"></script>
-  </body>
+      <div class="slider"><label for="adj-zoom">Crop zoom</label><input type="range" id="adj-zoom" min="1" max="3" step="0.05"><output id="val-zoom" for="adj-zoom"></output></div>
+      <div class="slider"><label for="view-panX">Horizontal crop</label><input type="range" id="view-panX" min="0" max="100" step="1"><output id="val-panX" for="view-panX"></output></div>
+      <div class="slider"><label for="view-panY">Vertical crop</label><input type="range" id="view-panY" min="0" max="100" step="1"><output id="val-panY" for="view-panY"></output></div>
+      <label class="toggle"><input type="checkbox" id="view-miniKeys"><span>Use 1, 2, 3, 4 to snap the in-page player<small>Only while that player is open, and never while typing. Escape returns the video to the page.</small></span></label>
+      <button id="viewReset">Reset fit &amp; crop</button>
+      <p class="hint">Fill crops image content; stretch changes proportions. For black bars baked into the video, adjust crop zoom manually. In-page layouts currently support top-page videos; use native PiP for embedded players.</p>
+    </section>
+    <section id="shortcuts" class="card"><div class="section-title"><h2>Keyboard shortcuts</h2><button id="manageShortcuts">Customize in Chrome</button></div>
+      <p class="hint">Playback commands control the floating or selected video. Assign additional shortcuts for pause, mute, unmute, crop, and each corner. Chrome may leave shortcuts unassigned if another extension uses them.</p>
+      <div id="shortcutList" class="shortcut-list"></div>
+    </section>
+    <section class="card"><div class="section-title"><h2>Picture adjustments</h2><span class="pill">Page video</span></div>
+      <div class="slider"><label for="adj-brightness">Brightness</label><input type="range" id="adj-brightness" min="0.5" max="1.5" step="0.05"><output id="val-brightness" for="adj-brightness"></output></div>
+      <div class="slider"><label for="adj-contrast">Contrast</label><input type="range" id="adj-contrast" min="0.5" max="1.5" step="0.05"><output id="val-contrast" for="adj-contrast"></output></div>
+      <div class="slider"><label for="adj-saturation">Saturation</label><input type="range" id="adj-saturation" min="0" max="2" step="0.05"><output id="val-saturation" for="adj-saturation"></output></div>
+      <div class="slider"><label for="adj-sharpen">Sharpness</label><input type="range" id="adj-sharpen" min="0" max="1" step="0.05"><output id="val-sharpen" for="adj-sharpen"></output></div>
+      <button id="adjReset">Reset picture adjustments</button>
+    </section>
+    <section id="sites" class="card"><h2>Site controls</h2><p class="hint">Excluding a hostname disables this extension on that page, including its embedded players. Subdomains are separate entries.</p>
+      <form id="excludeForm"><label for="siteHost">Exclude a site</label><div class="row"><input id="siteHost" type="text" placeholder="example.com or a page URL" autocomplete="off" required><button type="submit">Add exclusion</button></div></form>
+      <div class="table-scroll"><table id="sitesTable"><thead><tr><th>Hostname</th><th>Ad speed</th><th>Ad sessions</th><th>Enabled</th><th>Actions</th></tr></thead><tbody id="sitesBody"></tbody></table></div>
+      <p id="sitesEmpty" class="empty" hidden>No excluded sites or learned activity yet.</p>
+    </section>
+    <section id="experimental" class="card experiments"><div class="section-title"><h2>Experimental features</h2><span class="pill experimental">Opt in</span></div>
+      <p class="hint">Player compatibility varies. These features are off by default for new installations.</p>
+      <label class="toggle"><input type="checkbox" id="ccPip"><span>Caption bridge<small>Attempts to prepare captions for PiP. Chrome’s native PiP may not display them.</small></span></label>
+      <label class="toggle"><input type="checkbox" id="adComfort"><span>Ad comfort<small>Mutes detected ad sessions, attempts faster playback, and clicks recognized skip controls. Session counts do not mean ads were skipped.</small></span></label>
+      <div class="row"><label for="adSpeed">Ad playback speed</label><select id="adSpeed"><option value="auto">Auto</option><option value="2">2×</option><option value="3">3×</option><option value="5">5×</option><option value="16">16×</option></select><span class="hint" id="speedNote"></span></div>
+      <label class="toggle"><input type="checkbox" id="smartSpeed"><span>Smart speed<small>Uses audio energy to speed up quiet sections. Available on allowed, compatible streams; music can count as dialogue.</small></span></label>
+      <div class="field-grid"><label>During dialogue<select id="ssTalk"><option value="1">1×</option><option value="1.1">1.1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option></select></label><label>When quiet<select id="ssQuiet"><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="1.75">1.75×</option><option value="2">2×</option></select></label></div>
+      <p class="hint">Allow additional hosts with the toolbar’s right-click menu. If smart speed silences a stream, turn it off and reload the tab.</p>
+      <details><summary>Learned YouTube skip selectors</summary><div id="skipList"></div></details>
+      <button class="danger" id="resetAll">Reset learned data</button>
+    </section>
+  </main>
+  <footer>Local playback tools. No account, backend, or analytics. Preferences can sync through your browser account.</footer>
+  <script src="pip-core.js"></script><script src="options.js"></script>
+</body>
 </html>
