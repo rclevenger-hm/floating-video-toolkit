@@ -49,16 +49,22 @@
     return Number.isFinite(n) ? Math.min(max,Math.max(min,n)) : fallback;
   }
   function normalizeView(value = {}) {
+    value = value && typeof value === "object" ? value : {};
     return {fit:["original","fit","fill","stretch"].includes(value.fit) ? value.fit : "original",
       ratio:["auto","16:9","21:9","32:9","4:3"].includes(value.ratio) ? value.ratio : "auto",
       panX:clamp(value.panX,0,100,50),panY:clamp(value.panY,0,100,50),
       miniWidth:clamp(value.miniWidth,240,960,420),corner:Math.round(clamp(value.corner,1,4,4)),miniKeys:value.miniKeys !== false};
   }
+  function normalizeAdjust(value = {}) {
+    value = value && typeof value === "object" ? value : {};
+    return {brightness:clamp(value.brightness,0.5,1.5,1),contrast:clamp(value.contrast,0.5,1.5,1),
+      saturation:clamp(value.saturation,0,2,1),sharpen:clamp(value.sharpen,0,1,0),zoom:clamp(value.zoom,1,3,1)};
+  }
   function aspectRatio(value, fallback = 16/9) {
     const pair = String(value).split(":").map(Number);
     return pair.length === 2 && pair[0] > 0 && pair[1] > 0 ? pair[0]/pair[1] : fallback || 16/9;
   }
-  const api = {VIEW_DEFAULTS, normalizeView, aspectRatio, clamp, hostOf, normalizeHost, isDisabled, compareCandidates, describeVideo, pickVideo, chooseFrame};
+  const api = {VIEW_DEFAULTS, normalizeAdjust, normalizeView, aspectRatio, clamp, hostOf, normalizeHost, isDisabled, compareCandidates, describeVideo, pickVideo, chooseFrame};
   root.FloatingVideoCore = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

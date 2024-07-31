@@ -469,7 +469,7 @@
   // and an overlay -- never the network/stream -- so the worst case is "does
   // nothing", never a broken or stalled player. Paramount+ stitches ads into
   // the same stream (SSAI), so this is a comfort layer, not a true blocker.
-  let adComfort = true;
+  let adComfort = false;
   let adSpeedMode = "auto"; // "auto" (self-tuning) | a fixed number (2/3/5/16)
   let learnedRate = 16; // auto-tuned fastest rate the player honors, per host
   let rateLearnedAt = 0;
@@ -1200,7 +1200,7 @@
   // either (a) flip an existing loaded track to "showing", or (b) mirror the
   // site's on-screen caption DOM into live VTT cues on the video. Only active
   // while in PiP; everything is restored on exit. DRM-safe (no frame access).
-  let ccPip = true;
+  let ccPip = false;
   let ccTimer = null;
   let ccGeneration = 0;
   let ccAbort = null;
@@ -1566,7 +1566,7 @@
   chrome.storage?.sync?.get(
     {
       disabledHosts: [],
-      adComfort: true,
+      adComfort: false,
       adSpeed: "auto",
       autoPip: true,
       showButton: false,
@@ -1575,7 +1575,7 @@
       smartSpeed: false,
       smartSpeedRates: { talk: 1.25, quiet: 1.5 },
       ssExtraHosts: [],
-      ccPip: true,
+      ccPip: false,
       hidePaidOverlay: true,
     },
     async (res) => {
@@ -1585,16 +1585,16 @@
         tabHost = policy?.host || "";
       } catch (_) { return; } // Retry by reloading the tab if the worker is unavailable.
       hidePaidOverlay = res.hidePaidOverlay !== false;
-      adComfort = res.adComfort !== false;
+      adComfort = res.adComfort === true;
       adSpeedMode = parseSpeedMode(res.adSpeed);
       autoPip = res.autoPip !== false;
       showButton = res.showButton === true;
-      adj = { ...ADJ_DEFAULTS, ...(res.videoAdjust || {}) };
+      adj = core.normalizeAdjust(res.videoAdjust);
       viewSettings=core.normalizeView(res.viewSettings);
       smartSpeed = res.smartSpeed === true;
       ssRates = { talk: 1.25, quiet: 1.5, ...(res.smartSpeedRates || {}) };
       ssExtraHosts = Array.isArray(res.ssExtraHosts) ? res.ssExtraHosts : [];
-      ccPip = res.ccPip !== false;
+      ccPip = res.ccPip === true;
       applyEnabled(res.disabledHosts);
       // Already floating when we loaded (e.g. script injected late)? Attach now.
       if (ccPip && document.pictureInPictureElement) {
@@ -1607,7 +1607,7 @@
       if (changes.disabledHosts) applyEnabled(changes.disabledHosts.newValue);
       if (changes.adSpeed) adSpeedMode = parseSpeedMode(changes.adSpeed.newValue);
       if (changes.adComfort) {
-        adComfort = changes.adComfort.newValue !== false;
+        adComfort = changes.adComfort.newValue === true;
         if (adComfort && enabled) startAdWatch();
         else stopAdWatch();
       }
@@ -1624,7 +1624,7 @@
         if (enabled) applyVideoTweaks();
       }
       if (changes.videoAdjust) {
-        adj = { ...ADJ_DEFAULTS, ...(changes.videoAdjust.newValue || {}) };
+        adj = core.normalizeAdjust(changes.videoAdjust.newValue);
         if (enabled) applyVideoTweaks();
       }
       if (changes.smartSpeed) {
@@ -1652,7 +1652,7 @@
         applyPaidOverlayHide();
       }
       if (changes.ccPip) {
-        ccPip = changes.ccPip.newValue !== false;
+        ccPip = changes.ccPip.newValue === true;
         if (ccPip && enabled && document.pictureInPictureElement) {
           ccStart(document.pictureInPictureElement);
         } else if (!ccPip) {

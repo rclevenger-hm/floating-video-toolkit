@@ -210,27 +210,27 @@ async function refreshMenu(tab) {
   const host = hostOf(tab?.url);
   const {
     disabledHosts = [],
-    adComfort = true,
+    adComfort = false,
     adSpeed = "auto",
     autoPip = true,
     showButton = false,
     smartSpeed = false,
     ssExtraHosts = [],
-    ccPip = true,
+    ccPip = false,
   } = await chrome.storage.sync.get({
     disabledHosts: [],
-    adComfort: true,
+    adComfort: false,
     adSpeed: "auto",
     autoPip: true,
     showButton: false,
     smartSpeed: false,
     ssExtraHosts: [],
-    ccPip: true,
+    ccPip: false,
   });
   chrome.contextMenus.update(MENU_DISABLE, {
     checked: !!host && disabledHosts.includes(host),
   });
-  chrome.contextMenus.update(MENU_ADCOMFORT, { checked: adComfort !== false });
+  chrome.contextMenus.update(MENU_ADCOMFORT, { checked: adComfort === true });
   chrome.contextMenus.update(MENU_AUTOPIP, { checked: autoPip !== false });
   chrome.contextMenus.update(MENU_BUTTON, { checked: showButton === true });
   chrome.contextMenus.update(MENU_SMART, { checked: smartSpeed === true });
@@ -239,7 +239,7 @@ async function refreshMenu(tab) {
     (SS_BUILTIN.some((d) => host === d || host.endsWith("." + d)) ||
       ssExtraHosts.includes(host));
   chrome.contextMenus.update(MENU_SSHERE, { checked: ssAllowed });
-  chrome.contextMenus.update(MENU_CC, { checked: ccPip !== false });
+  chrome.contextMenus.update(MENU_CC, { checked: ccPip === true });
   for (const s of SPEED_OPTS) {
     chrome.contextMenus.update(MENU_SPEED + ":" + s, {
       checked: String(adSpeed) === String(s),

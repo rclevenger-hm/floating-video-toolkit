@@ -10,14 +10,15 @@ const ADJ_DEFAULTS = {
 };
 const SYNC_DEFAULTS = {
   disabledHosts: [],
-  adComfort: true,
+  adComfort: false,
   adSpeed: "auto",
   autoPip: true,
   showButton: false,
   videoAdjust: ADJ_DEFAULTS,
+  viewSettings: FloatingVideoCore.VIEW_DEFAULTS,
   smartSpeed: false,
   smartSpeedRates: { talk: 1.25, quiet: 1.5 },
-  ccPip: true,
+  ccPip: false,
   hidePaidOverlay: true,
 };
 const ADJ_KEYS = ["brightness", "contrast", "saturation", "sharpen", "zoom"];
@@ -38,12 +39,16 @@ function getAll() {
 }
 
 function render(d) {
+  const view = FloatingVideoCore.normalizeView(d.viewSettings);
+  for (const key of ["fit","ratio","miniWidth","corner","panX","panY"]) $("view-"+key).value=String(view[key]);
+  $("view-miniKeys").checked=view.miniKeys;
+  for (const key of ["panX","panY"]) $("val-"+key).textContent=view[key]+"%";
   // ---- global ----
   $("autoPip").checked = d.autoPip !== false;
   $("showButton").checked = d.showButton === true;
-  $("ccPip").checked = d.ccPip !== false;
+  $("ccPip").checked = d.ccPip === true;
   $("hidePaidOverlay").checked = d.hidePaidOverlay !== false;
-  $("adComfort").checked = d.adComfort !== false;
+  $("adComfort").checked = d.adComfort === true;
   $("adSpeed").value = String(d.adSpeed ?? "auto");
   $("speedNote").textContent =
     String(d.adSpeed) === "auto"
@@ -57,7 +62,7 @@ function render(d) {
   $("ssQuiet").value = String(rates.quiet);
 
   // ---- display adjustments ----
-  const adj = { ...ADJ_DEFAULTS, ...(d.videoAdjust || {}) };
+  const adj = FloatingVideoCore.normalizeAdjust(d.videoAdjust);
   for (const k of ADJ_KEYS) {
     $("adj-" + k).value = adj[k];
     $("val-" + k).textContent =
@@ -107,6 +112,7 @@ function render(d) {
     cb.type = "checkbox";
     cb.checked = !(d.disabledHosts || []).includes(host);
     cb.title = "Floating enabled on this site";
+    cb.setAttribute("aria-label", "Enable Floating Video on " + host);
     cb.addEventListener("change", () => toggleSite(host, cb.checked));
     tdFloat.appendChild(cb);
     tr.appendChild(tdFloat);
@@ -150,11 +156,22 @@ function render(d) {
     btn.textContent = "Forget skip selectors";
     btn.style.marginTop = "10px";
     btn.addEventListener("click", () =>
-      chrome.storage.local.set({ ytSkipLearned: [], ytSkipLearnedAt: 0 })
+      saveLocal({ ytSkipLearned: [], ytSkipLearnedAt: 0 })
     );
     list.appendChild(btn);
   }
 }
+
+function status(message, error=false) {
+  $("saveStatus").textContent=message;
+  $("saveStatus").classList.toggle("error",error);
+}
+async function save(area, values) {
+  try { await chrome.storage[area].set(values); status("Saved."); return true; }
+  catch(error) { status("Could not save: "+error.message,true); return false; }
+}
+const saveSync = values => save("sync",values);
+const saveLocal = values => save("local",values);
 
 // ---- mutations ----
 async function toggleSite(host, enabled) {
@@ -164,48 +181,48 @@ async function toggleSite(host, enabled) {
   const set = new Set(disabledHosts);
   if (enabled) set.delete(host);
   else set.add(host);
-  await chrome.storage.sync.set({ disabledHosts: [...set] });
+  return saveSync({ disabledHosts: [...set] });
 }
 async function reprobeSite(host) {
   const { adRateByHost = {} } = await chrome.storage.local.get({
     adRateByHost: {},
   });
   delete adRateByHost[host];
-  await chrome.storage.local.set({ adRateByHost });
+  await saveLocal({ adRateByHost });
 }
 async function forgetSite(host) {
   const { adRateByHost = {}, adStatsByHost = {} } =
     await chrome.storage.local.get({ adRateByHost: {}, adStatsByHost: {} });
   delete adRateByHost[host];
   delete adStatsByHost[host];
-  await chrome.storage.local.set({ adRateByHost, adStatsByHost });
+  await saveLocal({ adRateByHost, adStatsByHost });
 }
 
 // ---- global controls ----
 $("adComfort").addEventListener("change", (e) =>
-  chrome.storage.sync.set({ adComfort: e.target.checked })
+  saveSync({ adComfort: e.target.checked })
 );
 $("adSpeed").addEventListener("change", (e) => {
   const v = e.target.value;
-  chrome.storage.sync.set({ adSpeed: v === "auto" ? "auto" : Number(v) });
+  saveSync({ adSpeed: v === "auto" ? "auto" : Number(v) });
 });
 $("autoPip").addEventListener("change", (e) =>
-  chrome.storage.sync.set({ autoPip: e.target.checked })
+  saveSync({ autoPip: e.target.checked })
 );
 $("showButton").addEventListener("change", (e) =>
-  chrome.storage.sync.set({ showButton: e.target.checked })
+  saveSync({ showButton: e.target.checked })
 );
 $("smartSpeed").addEventListener("change", (e) =>
-  chrome.storage.sync.set({ smartSpeed: e.target.checked })
+  saveSync({ smartSpeed: e.target.checked })
 );
 $("ccPip").addEventListener("change", (e) =>
-  chrome.storage.sync.set({ ccPip: e.target.checked })
+  saveSync({ ccPip: e.target.checked })
 );
 $("hidePaidOverlay").addEventListener("change", (e) =>
-  chrome.storage.sync.set({ hidePaidOverlay: e.target.checked })
+  saveSync({ hidePaidOverlay: e.target.checked })
 );
 async function saveSsRates() {
-  await chrome.storage.sync.set({
+  await saveSync({
     smartSpeedRates: {
       talk: Number($("ssTalk").value) || 1.25,
       quiet: Number($("ssQuiet").value) || 1.5,
@@ -219,7 +236,7 @@ async function saveAdj(key, value) {
   const { videoAdjust = {} } = await chrome.storage.sync.get({
     videoAdjust: ADJ_DEFAULTS,
   });
-  await chrome.storage.sync.set({
+  await saveSync({
     videoAdjust: { ...ADJ_DEFAULTS, ...videoAdjust, [key]: value },
   });
 }
@@ -232,12 +249,12 @@ for (const k of ADJ_KEYS) {
   el.addEventListener("change", () => saveAdj(k, Number(el.value)));
 }
 $("adjReset").addEventListener("click", () =>
-  chrome.storage.sync.set({ videoAdjust: ADJ_DEFAULTS })
+  saveSync({ videoAdjust: ADJ_DEFAULTS })
 );
 $("resetAll").addEventListener("click", async () => {
   if (!confirm("Forget all learned speeds, skip selectors, and skip counts?"))
     return;
-  await chrome.storage.local.set({
+  await saveLocal({
     adRateByHost: {},
     ytSkipLearned: [],
     ytSkipLearnedAt: 0,
@@ -246,5 +263,42 @@ $("resetAll").addEventListener("click", async () => {
 });
 
 // ---- live refresh ----
-chrome.storage.onChanged.addListener(() => getAll().then(render));
-getAll().then(render);
+const refresh=()=>getAll().then(render).catch(error=>status("Could not load settings: "+error.message,true));
+chrome.storage.onChanged.addListener(refresh);
+refresh();
+$("version").textContent="v"+chrome.runtime.getManifest().version;
+$("manageShortcuts").addEventListener("click",()=>chrome.tabs.create({url:"chrome://extensions/shortcuts"}).catch(error=>status(error.message,true)));
+async function renderShortcuts() {
+  const commands=await chrome.commands.getAll();
+  $("shortcutList").replaceChildren();
+  for(const command of commands.filter(c=>!c.name.startsWith("_"))) {
+    const row=document.createElement("div");row.className="shortcut";
+    const label=document.createElement("span");label.textContent=command.description;
+    const key=document.createElement("kbd");key.textContent=command.shortcut||"Not assigned";
+    row.append(label,key);$("shortcutList").append(row);
+  }
+}
+renderShortcuts().catch(error=>status("Could not read shortcuts: "+error.message,true));
+window.addEventListener("focus",()=>renderShortcuts().catch(()=>{}));
+$("excludeForm").addEventListener("submit",async event=>{
+  event.preventDefault();
+  try {
+    const host=FloatingVideoCore.normalizeHost($("siteHost").value);
+    if(await toggleSite(host,false)) { $("siteHost").value=""; status("Excluded "+host+" and its embedded players."); }
+  } catch(error) { status(error.message,true); $("siteHost").focus(); }
+});
+async function saveView(key,value) {
+  try {
+    const {viewSettings}=await chrome.storage.sync.get({viewSettings:FloatingVideoCore.VIEW_DEFAULTS});
+    await saveSync({viewSettings:FloatingVideoCore.normalizeView({...viewSettings,[key]:value})});
+  } catch(error) { status(error.message,true); }
+}
+for(const key of ["fit","ratio","miniWidth","corner","panX","panY","miniKeys"]) {
+  const input=$("view-"+key);
+  input.addEventListener("change",()=>saveView(key,key==="miniKeys"?input.checked:input.value));
+  if(key==="panX"||key==="panY") input.addEventListener("input",()=>$("val-"+key).textContent=input.value+"%");
+}
+$("viewReset").addEventListener("click",async()=>{
+  const {viewSettings,videoAdjust}=await chrome.storage.sync.get(SYNC_DEFAULTS);
+  await saveSync({viewSettings:{...viewSettings,fit:"original",ratio:"auto",panX:50,panY:50},videoAdjust:{...videoAdjust,zoom:1}});
+});
