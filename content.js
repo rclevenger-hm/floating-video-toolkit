@@ -138,6 +138,7 @@
   }
   function teardownAll() {
     enabled = false;
+    chrome.runtime.sendMessage({type:"PIP_STATE",active:false}).catch(() => {});
     userWantsPip = false;
     stopPulse();
     stopKeepClear();
@@ -367,6 +368,7 @@
   document.addEventListener(
     "leavepictureinpicture",
     () => {
+      chrome.runtime.sendMessage({type:"PIP_STATE",active:false}).catch(() => {});
       ccStop(); // restore caption state the moment we're back in-page
       if (userWantsPip) inviteResume();
     },
@@ -411,6 +413,8 @@
     }
     btn = document.createElement("button");
     btn.textContent = "⧉ PiP";
+    btn.setAttribute("aria-label","Toggle floating video");
+    btn.addEventListener("focus",()=>{btn.style.opacity="1";});
     Object.assign(btn.style, {
       position: "fixed",
       top: "16px",
@@ -443,7 +447,7 @@
     if (fadeHooked) return;
     fadeHooked = true;
     document.addEventListener("mousemove", (e) => {
-      if (!btn || pulsing) return;
+      if (!btn || pulsing || document.activeElement === btn) return;
       btn.style.opacity = e.clientY < 120 ? "1" : "0";
     });
   }
@@ -1525,7 +1529,10 @@
   document.addEventListener(
     "enterpictureinpicture",
     (e) => {
-      if (e.target instanceof HTMLVideoElement) ccStart(e.target);
+      if (enabled && e.target instanceof HTMLVideoElement) {
+        chrome.runtime.sendMessage({type:"PIP_STATE",active:true}).catch(() => {});
+        ccStart(e.target);
+      }
     },
     true
   );

@@ -15,7 +15,7 @@ function worker({disabledHosts = [], results = []} = {}) {
       commands:{onCommand:event('command')},
       runtime:{onMessage:event('message'),onInstalled:event('install'),onStartup:event('startup'),openOptionsPage:noop},
       tabs:{get:async()=>({id:7,url:'https://top.example/watch'}),query:async()=>[{id:7}],onRemoved:event('remove'),onUpdated:event('update'),onActivated:event('activate')},
-      storage:{sync:{get:async defaults=>({...defaults,disabledHosts})},local:{get:async d=>d,set:noop},session:{set:noop}},
+      storage:{sync:{get:async defaults=>({...defaults,disabledHosts})},local:{get:async d=>d,set:noop},session:{get:async()=>({}),set:noop},onChanged:{addListener(){}}},
       contextMenus:{onClicked:event('menu'),update:noop},
       scripting:{executeScript:async args=>{calls.push(args); return results;}}
     }});
@@ -49,4 +49,11 @@ test('simultaneous requests collapse to one frame action', async()=>{
   const w=worker({results:[{frameId:0,result:{host:'top.example',candidate:{playing:true,area:100,pixels:100}}}]});
   await Promise.all([vm.runInContext('callToggle(7)',w.context),vm.runInContext('callToggle(7)',w.context)]);
   assert.equal(w.calls.length,2);
+});
+
+test('media commands follow the native PiP owner instead of the active tab',async()=>{
+  const w=worker();
+  w.context.chrome.storage.session.get=async()=>({pipOwner:{tabId:12}});
+  assert.equal(await vm.runInContext('commandTarget("pause")',w.context),12);
+  assert.equal(await vm.runInContext('commandTarget("toggle-cinema")',w.context),7);
 });

@@ -56,23 +56,42 @@ chrome.action.onClicked.addListener((tab) => {
   if (tab?.id != null) performAction(tab.id);
 });
 
-// Keyboard command (Alt+P by default; configurable at chrome://extensions/shortcuts).
-chrome.commands.onCommand.addListener((command) => {
+// Browser shortcuts follow the native PiP owner for playback, even on another tab.
+const PLAYBACK_COMMANDS = new Set(["play-pause","play","pause","toggle-mute","mute","unmute"]);
+async function commandTarget(command) {
+  if (PLAYBACK_COMMANDS.has(command)) {
+    const {pipOwner} = await chrome.storage.session.get("pipOwner");
+    if (pipOwner) {
+      try { await chrome.tabs.get(pipOwner.tabId); return pipOwner.tabId; }
+      catch (_) { await chrome.storage.session.remove("pipOwner"); }
+    }
+  }
+  return (await chrome.tabs.query({active:true,currentWindow:true}))[0]?.id;
+}
+chrome.commands.onCommand.addListener(command => {
   if (!chrome.runtime.getManifest().commands[command]) return;
-  chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-    const tab = tabs[0];
-    if (tab?.id != null) performAction(tab.id, command);
-  });
+  commandTarget(command).then(tabId => tabId == null ? null : performAction(tabId,command)).catch(() => {});
 });
 
 // Per-tab count of ads the comfort layer muted/skipped, shown on the badge.
 const adCounts = new Map();
 let statsWrite = Promise.resolve();
+let ownerWrite = Promise.resolve();
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   if (tabId == null) return;
-  if (msg?.type === "GET_TAB_HOST") {
+  if (msg?.type === "PIP_STATE") {
+    const updateOwner = async () => {
+      if (msg.active) await chrome.storage.session.set({pipOwner:{tabId,documentId:sender.documentId,frameId:sender.frameId}});
+      else {
+        const {pipOwner}=await chrome.storage.session.get("pipOwner");
+        if (pipOwner?.tabId === tabId && pipOwner?.documentId === sender.documentId)
+          await chrome.storage.session.remove("pipOwner");
+      }
+    };
+    ownerWrite=ownerWrite.then(updateOwner).catch(() => {});
+  } else if (msg?.type === "GET_TAB_HOST") {
     sendResponse({host: hostOf(sender.tab?.url)});
   } else if (msg?.type === "FAN_OUT_PIP") {
     performAction(tabId).then(sendResponse);
@@ -94,7 +113,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   }
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => adCounts.delete(tabId));
+chrome.tabs.onRemoved.addListener(async tabId => {
+  adCounts.delete(tabId);
+  const {pipOwner}=await chrome.storage.session.get("pipOwner");
+  if(pipOwner?.tabId===tabId) await chrome.storage.session.remove("pipOwner");
+});
+chrome.storage.onChanged?.addListener((_changes,area) => {
+  if(area!=="sync") return;
+  chrome.tabs.query({active:true,currentWindow:true}).then(tabs=>tabs[0] && refreshMenu(tabs[0])).catch(()=>{});
+});
 
 // ---- right-click the toolbar icon: per-site disable + ad-comfort toggle ----
 const MENU_DISABLE = "fpip-disable";
@@ -134,9 +161,9 @@ function createMenu() {
     });
     chrome.contextMenus.create({
       id: MENU_ADCOMFORT,
-      title: "Mute & skip ads (experimental)",
+      title: "Ad comfort (experimental)",
       type: "checkbox",
-      checked: true,
+      checked: false,
       contexts: ["action"],
     });
     chrome.contextMenus.create({
@@ -169,9 +196,9 @@ function createMenu() {
     });
     chrome.contextMenus.create({
       id: MENU_CC,
-      title: "Captions in floating window",
+      title: "Caption bridge (experimental)",
       type: "checkbox",
-      checked: true,
+      checked: false,
       contexts: ["action"],
     });
     chrome.contextMenus.create({
@@ -249,11 +276,11 @@ async function refreshMenu(tab) {
 
 chrome.tabs.onActivated.addListener(async ({ tabId }) => {
   try {
-    refreshMenu(await chrome.tabs.get(tabId));
+    await refreshMenu(await chrome.tabs.get(tabId));
   } catch (_) {}
 });
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.status === "complete" || info.url) refreshMenu(tab);
+  if (info.status === "complete" || info.url) refreshMenu(tab).catch(() => {});
   if (info.url) {
     adCounts.delete(tabId);
     chrome.action.setBadgeText({ tabId, text: "" });
