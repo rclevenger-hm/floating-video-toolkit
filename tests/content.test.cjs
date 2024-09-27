@@ -70,3 +70,25 @@ test('disabled site closes the mini-player and cancels its page changes',async t
   await e.w.chrome.storage.sync.set({disabledHosts:['top.example']});
   assert.equal(v.parentNode,parent);assert.equal(e.w.document.getElementById('fpip-player'),null);
 });
+
+test('late caption fetch cannot recreate tracks after disabling the site',async t=>{
+  const e=environment({url:'https://www.youtube.com/watch?v=example',tabHost:'www.youtube.com',settings:{ccPip:true}});t.after(e.close);
+  let release;const pending=new Promise(resolve=>{release=resolve;});let tracksAdded=0;
+  e.w.fetch=async url=>{if(url.includes('watch?')) {await pending;return {text:async()=>'{"captionTracks":[{"baseUrl":"https://captions.example/?a=1","languageCode":"en"}],"x":1}'};}return {json:async()=>({events:[{tStartMs:0,dDurationMs:1000,segs:[{utf8:'hello'}]}]})};};
+  const video=e.w.document.querySelector('video');video.addTextTrack=()=>{tracksAdded++;throw new Error('Unexpected track creation');};
+  e.load(['pip-core.js','page-state.js','player-layout.js','content.js']);await flush();
+  await e.w.__fpipController.run('toggle-pip');await e.w.chrome.storage.sync.set({disabledHosts:['www.youtube.com']});
+  release();await flush();await flush();assert.equal(tracksAdded,0);
+});
+
+test('smart speed disable restores the user rate and keeps an audible bypass',async t=>{
+  const e=environment({settings:{smartSpeed:true,ssExtraHosts:['top.example']}});t.after(e.close);
+  const edges=[];const source={connect:node=>edges.push(['source',node]),disconnect:()=>edges.push(['disconnect-source'])};
+  const analyser={frequencyBinCount:1024,fftSize:2048,connect:node=>edges.push(['analyser',node]),disconnect:()=>edges.push(['disconnect-analyser']),getByteFrequencyData:buffer=>buffer.fill(70)};
+  e.w.AudioContext=class {constructor(){this.state='running';this.sampleRate=48000;this.destination='speaker';}createMediaElementSource(){return source;}createAnalyser(){return analyser;}};
+  const video=e.w.document.querySelector('video');video.src='https://top.example/movie.webm';
+  e.load(['pip-core.js','page-state.js','player-layout.js','content.js']);await flush();
+  [...e.intervals.values()].find(i=>i.ms===150).fn();assert.equal(video.playbackRate,1.25);
+  await e.w.chrome.storage.sync.set({smartSpeed:false});assert.equal(video.playbackRate,1);
+  assert.deepEqual(edges.at(-1),['source','speaker']);
+});
