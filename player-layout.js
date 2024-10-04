@@ -39,6 +39,7 @@
       panel.style.transform = mode === 'cinema' ? 'translate(-50%, -50%)' : 'none';
       panel.setAttribute('aria-label',mode === 'mini' ? 'Mini-player' : 'Cinema player');
       const controls = panel.shadowRoot;
+      controls.querySelector('[data-action="cycle-fit"]').textContent = settings.fit[0].toUpperCase() + settings.fit.slice(1);
       controls.querySelector('[data-action="play-pause"]').textContent = video.paused ? 'Play' : 'Pause';
       controls.querySelector('[data-action="toggle-mute"]').textContent = video.muted ? 'Unmute' : 'Mute';
       for (const button of controls.querySelectorAll('[data-corner]'))

@@ -60,6 +60,7 @@ chrome.action.onClicked.addListener((tab) => {
 const PLAYBACK_COMMANDS = new Set(["play-pause","play","pause","toggle-mute","mute","unmute"]);
 async function commandTarget(command) {
   if (PLAYBACK_COMMANDS.has(command)) {
+    await ownerWrite;
     const {pipOwner} = await chrome.storage.session.get("pipOwner");
     if (pipOwner) {
       try { await chrome.tabs.get(pipOwner.tabId); return pipOwner.tabId; }
@@ -152,6 +153,17 @@ const SPEED_TITLE = {
 
 function createMenu() {
   chrome.contextMenus.removeAll(() => {
+    const groups = {
+      playback:["Playback",["play-pause","play","pause","toggle-mute","mute","unmute"]],
+      view:["Ultrawide & mini-player",["toggle-mini","toggle-cinema","cycle-fit","zoom-in","zoom-out","reset-view"]],
+      corner:["Mini-player corner",["snap-1","snap-2","snap-3","snap-4"]]
+    };
+    const commands=chrome.runtime.getManifest().commands;
+    for(const [key,[title,actions]] of Object.entries(groups)) {
+      const id="fpip-group-"+key;
+      chrome.contextMenus.create({id,title,contexts:["action"]});
+      for(const action of actions) chrome.contextMenus.create({id:"fpip-command:"+action,parentId:id,title:commands[action].description,contexts:["action"]});
+    }
     chrome.contextMenus.create({
       id: MENU_DISABLE,
       title: "Disable floating video on this site",
@@ -288,7 +300,9 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
 });
 
 chrome.contextMenus.onClicked.addListener(async (info, tab) => {
-  if (info.menuItemId === MENU_DISABLE) {
+  if (String(info.menuItemId).startsWith("fpip-command:") && tab?.id != null) {
+    await performAction(tab.id,String(info.menuItemId).slice("fpip-command:".length));
+  } else if (info.menuItemId === MENU_DISABLE) {
     const host = hostOf(tab?.url);
     if (!host) return;
     const { disabledHosts = [] } = await chrome.storage.sync.get({

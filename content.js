@@ -14,6 +14,7 @@
   const host = core.hostOf(location.href);
   let tabHost = "";
   let disabledHosts = [];
+  let settingsReady = false;
   let enabled = false; // Fail closed until settings and top-page policy arrive.
   function policyHosts() {
     return [host, tabHost, ...Array.from(location.ancestorOrigins || [], core.hostOf)];
@@ -136,9 +137,12 @@
       return false;
     }
   }
+  function notifyPipState(active) {
+    try { chrome.runtime.sendMessage({type:"PIP_STATE",active}).catch(() => {}); } catch (_) {}
+  }
   function teardownAll() {
     enabled = false;
-    chrome.runtime.sendMessage({type:"PIP_STATE",active:false}).catch(() => {});
+    notifyPipState(false);
     userWantsPip = false;
     stopPulse();
     stopKeepClear();
@@ -368,7 +372,7 @@
   document.addEventListener(
     "leavepictureinpicture",
     () => {
-      chrome.runtime.sendMessage({type:"PIP_STATE",active:false}).catch(() => {});
+      notifyPipState(false);
       ccStop(); // restore caption state the moment we're back in-page
       if (userWantsPip) inviteResume();
     },
@@ -1530,7 +1534,7 @@
     "enterpictureinpicture",
     (e) => {
       if (enabled && e.target instanceof HTMLVideoElement) {
-        chrome.runtime.sendMessage({type:"PIP_STATE",active:true}).catch(() => {});
+        notifyPipState(true);
         ccStart(e.target);
       }
     },
@@ -1570,47 +1574,35 @@
   function parseSpeedMode(val) {
     return val === "auto" || val == null ? "auto" : Number(val) || "auto";
   }
-  chrome.storage?.sync?.get(
-    {
-      disabledHosts: [],
-      adComfort: false,
-      adSpeed: "auto",
-      autoPip: true,
-      showButton: false,
-      videoAdjust: ADJ_DEFAULTS,
-      viewSettings: core.VIEW_DEFAULTS,
-      smartSpeed: false,
-      smartSpeedRates: { talk: 1.25, quiet: 1.5 },
-      ssExtraHosts: [],
-      ccPip: false,
-      hidePaidOverlay: true,
-    },
-    async (res) => {
-      if (!res || chrome.runtime?.lastError) return; // context gone
-      try {
-        const policy = await chrome.runtime.sendMessage({type: "GET_TAB_HOST"});
-        tabHost = policy?.host || "";
-      } catch (_) { return; } // Retry by reloading the tab if the worker is unavailable.
-      hidePaidOverlay = res.hidePaidOverlay !== false;
-      adComfort = res.adComfort === true;
-      adSpeedMode = parseSpeedMode(res.adSpeed);
-      autoPip = res.autoPip !== false;
-      showButton = res.showButton === true;
-      adj = core.normalizeAdjust(res.videoAdjust);
-      viewSettings=core.normalizeView(res.viewSettings);
-      smartSpeed = res.smartSpeed === true;
-      ssRates = { talk: 1.25, quiet: 1.5, ...(res.smartSpeedRates || {}) };
-      ssExtraHosts = Array.isArray(res.ssExtraHosts) ? res.ssExtraHosts : [];
-      ccPip = res.ccPip === true;
-      applyEnabled(res.disabledHosts);
-      // Already floating when we loaded (e.g. script injected late)? Attach now.
-      if (ccPip && document.pictureInPictureElement) {
-        ccStart(document.pictureInPictureElement);
-      }
-    }
-  );
+  const SYNC_DEFAULTS = {
+    disabledHosts:[],adComfort:false,adSpeed:"auto",autoPip:true,showButton:false,
+    videoAdjust:ADJ_DEFAULTS,viewSettings:core.VIEW_DEFAULTS,smartSpeed:false,
+    smartSpeedRates:{talk:1.25,quiet:1.5},ssExtraHosts:[],ccPip:false,hidePaidOverlay:true
+  };
+  (async () => {
+    const policy=await chrome.runtime.sendMessage({type:"GET_TAB_HOST"});
+    tabHost=policy?.host || "";
+    // Read settings after the policy round trip so an exclusion changed during
+    // initialization cannot be overwritten by an older storage snapshot.
+    const res=await chrome.storage.sync.get(SYNC_DEFAULTS);
+    hidePaidOverlay=res.hidePaidOverlay !== false;
+    adComfort=res.adComfort === true;
+    adSpeedMode=parseSpeedMode(res.adSpeed);
+    autoPip=res.autoPip !== false;
+    showButton=res.showButton === true;
+    adj=core.normalizeAdjust(res.videoAdjust);
+    viewSettings=core.normalizeView(res.viewSettings);
+    smartSpeed=res.smartSpeed === true;
+    ssRates={talk:core.clamp(res.smartSpeedRates?.talk,0.25,4,1.25),quiet:core.clamp(res.smartSpeedRates?.quiet,0.25,4,1.5)};
+    ssExtraHosts=Array.isArray(res.ssExtraHosts) ? res.ssExtraHosts : [];
+    ccPip=res.ccPip === true;
+    settingsReady=true;
+    applyEnabled(res.disabledHosts);
+    if (ccPip && document.pictureInPictureElement) ccStart(document.pictureInPictureElement);
+  })().catch(error => console.warn("[Floating PiP] initialization:",error.message));
   chrome.storage?.onChanged?.addListener((changes, area) => {
     if (area === "sync") {
+      if (!settingsReady) return;
       if (changes.disabledHosts) applyEnabled(changes.disabledHosts.newValue);
       if (changes.adSpeed) adSpeedMode = parseSpeedMode(changes.adSpeed.newValue);
       if (changes.adComfort) {
