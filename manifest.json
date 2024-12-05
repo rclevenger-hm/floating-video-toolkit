@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Always-On-Top Floating Video (PiP)",
-  "version": "1.20.0",
-  "description": "Force Picture-in-Picture floating video on streaming sites that block it, like Paramount+.",
+  "name": "Floating Video Toolkit",
+  "version": "1.21.0",
+  "description": "Floating video, ultrawide fit and crop, playback shortcuts, and an in-page mini-player with four corner positions.",
   "permissions": [
     "activeTab",
     "scripting",

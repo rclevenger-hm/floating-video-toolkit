@@ -1,161 +1,123 @@
-# Always-On-Top Floating Video (PiP)
+# Floating Video Toolkit
 
-A Chrome Manifest V3 extension for keeping web video in a floating window while you work. It combines native Picture-in-Picture (PiP) with optional playback adjustments, smart speed, and experimental ad-comfort and caption features.
+[![Validate and package](https://github.com/rclevenger-hm/floating-video-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/rclevenger-hm/floating-video-toolkit/actions/workflows/ci.yml)
 
-**Source version:** `1.20.0`  
-**Suggested repository:** `floating-video-toolkit`  
-**Status:** Development snapshot. Features below are documented from the supplied source; streaming-service compatibility has not been independently tested for this documentation update.
+A Chromium extension for floating video, ultrawide viewing, and keyboard playback controls. No account, backend, bundler, or runtime dependencies.
 
-## Features
+## Choose how you watch
 
-- **One-click floating video:** toolbar action and `Alt+P` shortcut request native PiP for a detected video.
-- **PiP flag handling:** clears `disablePictureInPicture` and watches for sites that reapply it.
-- **Optional on-page button:** a small PiP control appears near the upper-right corner when you move the pointer near the top of the page.
-- **Automatic PiP integration:** registers a Media Session action handler for eligible tab-switch transitions.
-- **Episode-following logic:** attempts to switch to a new playing video while a PiP session remains open.
-- **Experimental ad comfort:** detects selected sites' ad UI, mutes the selected video, attempts faster playback, and clicks recognized YouTube skip controls.
-- **Smart speed:** uses local audio-energy analysis to distinguish louder sections from sustained quiet, with separate playback rates.
-- **Picture adjustments:** brightness, contrast, saturation, sharpening, and zoom for the page's selected video.
-- **Experimental caption bridge:** attempts native text tracks, YouTube caption loading, or mirroring of visible caption text.
-- **Settings and learned data:** inspect learned ad rates, clear learned selectors, and manage site exclusions.
-
-Native PiP is a browser-managed, always-on-top video window. Removing a site's disable flag does not override browser permissions, embedding policies, protected-content restrictions, or an unavailable PiP API. [Browser API reference](https://developer.mozilla.org/en-US/docs/Web/API/Picture-in-Picture_API).
-
-## Install locally
-
-No package installation, bundler, API key, or backend is required.
-
-1. Download or clone this repository and extract it if needed.
-2. Open `chrome://extensions` in desktop Chrome.
-3. Enable **Developer mode**.
-4. Select **Load unpacked** and choose the folder containing `manifest.json`.
-5. Pin the extension from Chrome's Extensions menu.
-6. Reload an already-open video page, start playback, and click the toolbar icon.
-
-After changing the extension's files, reload it on `chrome://extensions`, then reload the affected video tabs. Existing content scripts may otherwise keep running from the previous version.
-
-Other Chromium browsers are potential targets, but this snapshot has no recorded browser/version compatibility matrix. Firefox and Safari ports are not included.
-
-## Basic usage
-
-| Action | How |
-| --- | --- |
-| Open or close floating video | Click the extension's toolbar icon or press `Alt+P`. |
-| Configure the browser shortcut | Open `chrome://extensions/shortcuts`. See the shortcut limitation below. |
-| Open settings | Right-click the toolbar icon → **Status & learned data…**, or open Extension options from Chrome's extension details. |
-| Enable the page button | Turn on **Show floating PiP button on page**. |
-| Exclude a hostname | Right-click the toolbar icon → **Disable floating video on this site**. See the current exclusion limitation below. |
-| Clear learned behavior | Use **Re-probe speed**, **Forget**, **Forget skip selectors**, or **Reset all learned data** on the settings page. |
-
-Start video playback before requesting PiP. The picker prefers a playing video with a large intrinsic resolution; it does not always choose the video you last clicked.
-
-Most controls are global. Site exclusion and the additional smart-speed allowlist are hostname-based. Learned ad rates are stored per frame hostname; statistics are recorded against the tab's hostname.
-
-## Settings and defaults
-
-| Setting | Default | Scope / behavior |
+| Mode | What it does | Where it works |
 | --- | --- | --- |
-| Site exclusions | Empty | Exact hostname match; not a wildcard exclusion. |
-| Automatic PiP | On | Requests browser-driven auto-PiP integration; subject to browser eligibility and site settings. |
-| On-page PiP button | Off | Top frame only. |
-| Captions in PiP | On | Experimental text-track bridge; visible output is not guaranteed. |
-| Ad comfort | On | Runs only for ad rules marked `verified` in the source. |
-| Ad speed | Auto | Fixed alternatives: 2×, 3×, 5×, or 16×; player support varies. |
-| Smart speed | Off | Built-in host allowlist plus user-added hosts. |
-| Dialogue / quiet rate | 1.25× / 1.5× | Global smart-speed targets; manual player speed can become the baseline. |
-| Brightness / contrast / saturation | 1 / 1 / 1 | CSS filters on the selected page video. |
-| Sharpness / zoom | 0 / 1 | SVG sharpening filter and CSS scaling. |
-| Hide YouTube paid-promotion overlay | On | Hides matching page overlays with CSS. |
+| Native Picture-in-Picture | Floats the selected video above other applications | Compatible top-page and embedded videos; browser permissions apply |
+| Mini-player | Places the video in one of four page corners, with playback controls | Inside the current tab, for top-page videos |
+| Cinema view | Creates a large in-page player with ultrawide fit and crop controls | Inside the current tab, for top-page videos |
 
-## Site handling in this snapshot
+The extension probes accessible frames and controls **one video at a time**. It prefers the existing floating player, then a video you clicked, then a visible playing video. Top-page site exclusions also apply to its embedded frames.
 
-This table describes **configured code paths**, not a certification that a current streaming service works.
+## Install
 
-| Site or player | Ad-comfort rule | Smart-speed eligibility |
-| --- | --- | --- |
-| YouTube / YouTube No-Cookie | Enabled; includes skip-button selectors and discovery | Built in, subject to media checks |
-| Paramount+ / CBS | Enabled in source | Not built in |
-| Hulu | Enabled in source | Not built in |
-| Disney+ | Rule exists, but detection is dormant because it is not marked `verified` | Not built in |
-| ESPN / ESPN+ | Rule exists, but detection is dormant because it is not marked `verified` | Not built in |
-| Plex, Dropout, VHX | No active ad-comfort rule | Built in, subject to media checks |
-| Other hosts | Generic selectors exist but are dormant | Explicit smart-speed allowlisting required |
+1. Download the extension ZIP from [Releases](https://github.com/rclevenger-hm/floating-video-toolkit/releases) or the `floating-video-toolkit` artifact from a successful [workflow run](https://github.com/rclevenger-hm/floating-video-toolkit/actions).
+2. Extract the ZIP. Do not try to load the ZIP directly.
+3. Open `chrome://extensions`, enable **Developer mode**, and choose **Load unpacked**.
+4. Select the extracted directory containing `manifest.json` and pin the extension.
+5. Reload video tabs, start playback, and click the toolbar icon.
 
-The PiP path itself is not limited to these domains. Discovery is per frame and uses ordinary document video queries; closed shadow roots and some special frames are outside its current coverage.
+You can also clone this repository and load its root directory directly. Chrome is the automated test target. Other Chromium browsers need their own compatibility checks; Firefox and Safari ports are not included.
 
-### Automatic PiP and episode changes
+After an update, reload the extension on `chrome://extensions`, then reload video tabs so old content scripts are replaced.
 
-The extension registers `enterpictureinpicture` on Media Session and sets `autoPictureInPicture` on the selected video. Browser support, audible playback, frame placement, and site permissions affect whether automatic entry occurs. It is not a guarantee that every tab switch opens or closes PiP. See [Chrome's automatic PiP documentation](https://developer.chrome.com/blog/automatic-picture-in-picture-media-playback).
+## Playback and shortcuts
 
-After extension-initiated entry, episode-following logic attempts a swap when another sufficiently large video starts while PiP remains active. If PiP closes first, the code invites a manual resume by pulsing the page button **when that button exists**. There is no timed re-entry retry loop in this version. The button is off by default.
+Right-click the toolbar icon for **Playback**, **Ultrawide & mini-player**, **Mini-player corner**, site controls, and settings. This makes every action accessible without assigning a shortcut first.
 
-### Ad comfort
-
-Ad comfort reacts to page elements; it does not block network requests or remove advertisements from a media stream. On an enabled rule it attempts to mute and accelerate the selected video. Its black mask is an in-page overlay and does not cover the native PiP window.
-
-Auto speed uses a descending rate ladder and stores learned values per host. YouTube can enter a learning mode that leaves an ad at its original playback rate while searching for a skip control. Discovery is English-oriented and depends on the site's current DOM.
-
-The badge and **Ads skipped** label currently count completed detected ad sessions, including sessions that were only muted or were ended by disabling the feature. They do not prove that an ad was skipped or measure time saved. Detection errors or player rate restrictions can affect normal playback; turn ad comfort off if that happens.
-
-### Smart speed
-
-Smart speed samples audio energy in roughly the 300–3400 Hz range and waits about 700 ms of quiet before choosing the faster target. Music and effects can resemble dialogue; this is not speech recognition.
-
-The code checks the host allowlist, `mediaKeys`, and source/CORS indicators before creating a Web Audio connection. These checks reduce risk but do not guarantee compatibility with every stream. If enabling smart speed makes audio disappear, turn it off and reload the tab. Turning it off stops rate control but does not dismantle the existing audio graph.
-
-For Plex on a local hostname or IP, use **Smart speed: allow this site**. The built-in domains remain allowed even if the extra-host checkbox is cleared; use the global smart-speed switch to disable the feature.
-
-### Captions and picture adjustments
-
-The caption bridge prepares text tracks using existing cues, YouTube timed-text data, or visible page text. **Preparing cues is not proof that Chrome's native video PiP displays them.** Google documents native PiP subtitle limitations and describes Document PiP as the route to a fuller caption-capable player. Treat this feature as experimental until tested on specific browser versions. [Chrome's Spotify PiP case study](https://developer.chrome.com/blog/spotify-picture-in-picture).
-
-Enable captions in the site's player before testing. The current YouTube loader prefers the browser's language and does not necessarily match the player's selected caption language. Embedded URLs without a `v` query parameter are not handled by that loader.
-
-Picture adjustments operate on the page video's CSS. Do not assume those effects transfer into the browser's separate native PiP surface. Sharpness is a convolution filter, not AI upscaling.
-
-## Known limitations
-
-- **Site exclusion is incomplete:** the toolbar/background injection path does not check `disabledHosts`; exclusions also do not automatically cover a different iframe hostname.
-- **Multiple frames can compete:** toolbar activation runs independently in all accessible frames, with no single video owner across the tab.
-- **Shortcut remapping is incomplete:** a separate content-script listener still recognizes hardcoded `Alt+P` after the browser command is reassigned.
-- **Disabling a site is not a complete restore:** some caption state, auto-PiP hooks, and CSS changes can remain until a tab reload.
-- **PiP controls and captions are constrained:** this version uses video PiP, not Document PiP, and does not implement a custom floating player.
-- **Live service support is unverified:** selectors and player behavior can change. Comments marked `verified` are inherited source annotations, not fresh test results.
-
-See [the prioritized roadmap](docs/ROADMAP.md) for fixes and proposed features.
-
-## Privacy and permissions
-
-The source contains no analytics client, telemetry service, remote executable code loader, or project backend. It does make YouTube page/caption requests, and preferences use Chrome's `storage.sync`, which may sync through the browser account. Learned data uses `storage.local`.
-
-The manifest requests `activeTab`, `scripting`, `storage`, `contextMenus`, and `<all_urls>` host access, with content scripts in matching frames. See [privacy and permissions](docs/PRIVACY.md) for what each permission enables and what data is retained.
-
-## Troubleshooting
-
-| Symptom | Try |
+| Action | Suggested shortcut |
 | --- | --- |
-| Nothing happens | Start playback, reload the tab after extension installation/update, then use the toolbar action. Check site access and the browser's PiP support. |
-| Auto-PiP does not start | Check automatic PiP in Chrome's site settings. Test a playing, audible top-frame video. Manual PiP may still work. |
-| Wrong video floats or PiP flashes | A page may have multiple videos or frames. Close other players and retry; cross-frame arbitration is a roadmap item. |
-| Audio is missing or speed changes unexpectedly | Disable smart speed and ad comfort, then reload the tab. |
-| Captions are missing | Turn on site captions and re-enter PiP; native PiP rendering may still be unsupported. |
-| Site exclusion appears ineffective | Known limitation: toolbar injection and cross-origin frames can bypass the current exclusion path. Disable the extension for that session and reload if necessary. |
-| A site no longer behaves as expected | Record extension/browser version, hostname, enabled features, and reproduction steps. Avoid including account data or signed playback URLs. |
+| Toggle native PiP | `Alt+P` |
+| Play / pause | `Alt+Shift+P` |
+| Mute / unmute | `Alt+Shift+M` |
+| Toggle cinema view | `Alt+Shift+F` |
+| Separate play, pause, mute, and unmute | Assign in Chrome |
+| Toggle mini-player, cycle fit, crop zoom in/out, reset view | Assign in Chrome |
+| Snap mini-player to corners 1–4 | Assign in Chrome, or use the in-player controls |
 
-Developer-console messages use `[Floating PiP]`. Some failures are swallowed, so an empty console does not prove success.
+Customize these at `chrome://extensions/shortcuts` or use **Customize in Chrome** in settings. The settings page shows the actual bindings Chrome assigned, including conflicts that leave a command unassigned. There is no second hardcoded `Alt+P` binding.
+
+While the in-page player is open, plain **1 / 2 / 3 / 4** choose **top left / top right / bottom left / bottom right**. These keys ignore input fields, modifiers, and repeats, and can be disabled in settings. **Escape** returns the video to its original place.
+
+Playback shortcuts follow the native PiP video's tab even when you switch to another tab. Toolbar actions operate on the current tab.
+
+## Ultrawide viewing
+
+Open settings and choose:
+
+- **Fit:** show the entire video with letterboxing where necessary.
+- **Fill:** crop edges to cover the player.
+- **Stretch:** fill the player by changing proportions.
+- **Player shape:** Auto, 16:9, 21:9, 32:9, or 4:3 for the in-page player.
+- **Crop zoom:** 1–3×, with horizontal and vertical crop positioning.
+- **Mini-player size:** four sizes, constrained to the available tab dimensions.
+
+Fill handles the player's empty space. Bars encoded into the video require manual crop zoom; automatic black-bar detection is not implemented. Crop, pan, brightness, contrast, saturation, and sharpening operate on the page video. They are not guaranteed to appear in Chrome's native PiP surface.
+
+**Native PiP positioning is controlled by Chrome.** Corner snapping applies to the in-page mini-player, not the operating-system PiP window. Cinema and mini-player views are not always on top of other applications. Use native PiP for that behavior. [Chrome documents these placement restrictions](https://developer.chrome.com/docs/web-platform/document-picture-in-picture).
+
+Some players rely on the video's DOM position. In-page modes move the same video element and return it when closed; use native PiP if a site's player does not tolerate this. Embedded frames use native PiP because the in-page layout cannot escape their frame boundary.
+
+## Settings and site exclusions
+
+Right-click the toolbar → **Status & learned data…** to open settings.
+
+- Native PiP, optional automatic tab-switch PiP, page-button visibility, and picture controls are separate from experimental features.
+- Add an exact hostname or paste a URL in **Site controls**. Only the normalized hostname is stored; subdomains are separate entries.
+- Disabling a site stops watchers, cancels caption fetching, returns the in-page player, removes overlays, restores original video flags and styles, and releases playback-rate control.
+- An already open native PiP window stays open until you close it; disabling stops extension control.
+- **Reset learned data** removes learned ad speeds, skip selectors, and session totals. It preserves your settings and exclusions.
+
+Automatic PiP depends on browser eligibility, audible playback, and site permissions. It is not guaranteed on every tab switch. Episode following attempts a swap while PiP is still open; if Chrome closes it first, a user gesture may be needed to reopen it.
+
+## Experimental features
+
+These features are **off by default for new installations**. Existing stored choices remain respected.
+
+| Feature | Behavior and limits |
+| --- | --- |
+| Ad comfort | Detects configured page elements, mutes the selected video, attempts faster playback, and clicks recognized skip buttons. It does not block network requests or remove streamed ads. |
+| Smart speed | Uses local audio energy to speed up quiet sections. Music can count as dialogue. It is gated by host, DRM, and media-source checks; compatibility still varies. |
+| Caption bridge | Prepares native tracks or attempts YouTube/on-page caption extraction. Native PiP may not display the prepared captions. |
+
+Ad rules exist for YouTube, Paramount+/CBS, and Hulu. Those source rules are not evidence of current live-service compatibility. Dormant rules for other services remain inactive. **Ad-session totals are detected sessions, not verified skips or time saved.** Disabling an active session does not increment the total.
+
+Smart speed supports built-in host rules for YouTube, Plex, Dropout, and VHX, plus explicit extra hosts through the toolbar menu. If it silences a stream, disable it and reload the tab. On disable, the extension restores playback speed and bypasses its analyser while keeping audio connected; browser APIs do not let it fully undo an existing MediaElementSource connection.
+
+Caption fetches are canceled on exit or disable, and delayed results cannot recreate caption tracks after cleanup. Protected content and browser embedding policies still apply; the extension does not bypass DRM.
 
 ## Development
 
-The shipped extension uses plain JavaScript, HTML, CSS, and browser APIs. There are no declared third-party runtime dependencies or build steps in the supplied files.
-
-Basic JavaScript parsing checks, with Node.js installed:
+Use Node.js 22 or 24 and Python 3.12+ for packaging:
 
 ```sh
-node --check background.js
-node --check content.js
-node --check options.js
+npm ci
+npm run check
+npm test
+npx playwright install --with-deps chromium
+npm run test:browser
+npm run package
 ```
 
-These checks do not test browser behavior. See [architecture](docs/ARCHITECTURE.md), [validation and release guidance](docs/VALIDATION.md), and [roadmap](docs/ROADMAP.md).
+The package is written to `dist/floating-video-toolkit-VERSION.zip` with a SHA-256 checksum. It contains only extension assets, this README, and privacy documentation. Tests, fixtures, dependency folders, and development scripts are excluded.
 
-No license file was supplied. Choose and add a license before describing the repository as licensed open source. No GitHub repository, release, or store listing is created by this documentation package.
+CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.21.0.md).
+
+## Troubleshooting
+
+| Symptom | What to check |
+| --- | --- |
+| Nothing happens | Start playback, reload the page after installing, confirm site access, and inspect the toolbar tooltip for the last action result. |
+| Wrong video is controlled | Click the intended video before using the toolbar or shortcut. Hidden and unloaded videos are excluded from selection. |
+| A shortcut does not work | Open Chrome's shortcut settings; a browser/OS/extension conflict may prevent assignment. |
+| Cannot snap native PiP | Use the in-page mini-player for corner snapping. Move native PiP with the browser/OS controls. |
+| Embedded player will not enter cinema/mini mode | Use native PiP. In-page layouts currently require a top-page video. |
+| Audio or speed changes unexpectedly | Disable smart speed and ad comfort; reload the tab if audio remains affected. |
+| Captions do not appear | Enable site captions and verify browser support. The experimental bridge cannot guarantee native PiP caption rendering. |
+
+Privacy details: [permissions and stored data](docs/PRIVACY.md). Planned work: [roadmap](docs/ROADMAP.md). No open-source license has been selected yet.
