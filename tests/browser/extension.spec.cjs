@@ -86,3 +86,16 @@ test('ultrawide cinema applies fill and zoom and restores the original layout',a
   await command(extension,tabId,'close-layout');await command(extension,tabId,'reset-view');
   expect(await page.locator('#main').evaluate(v=>v.style.transform)).toBe('');
 });
+
+test('page-button native PiP follows playback shortcuts across tabs',async({extension})=>{
+  const {page,tabId}=await player(extension);
+  await extension.worker.evaluate(()=>chrome.storage.sync.set({showButton:true}));
+  await page.getByRole('button',{name:'Toggle floating video',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>Boolean(document.pictureInPictureElement))).toBe(true);
+  const other=await extension.context.newPage();await other.goto('about:blank');
+  await expect.poll(()=>extension.worker.evaluate(async()=>commandTarget('pause'))).toBe(tabId);
+  expect((await command(extension,tabId,'pause')).status).toBe('ok');
+  expect(await page.locator('#main').evaluate(v=>v.paused)).toBe(true);
+  await page.bringToFront();await page.getByRole('button',{name:'Toggle floating video',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>Boolean(document.pictureInPictureElement))).toBe(false);
+});
