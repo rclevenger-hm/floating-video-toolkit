@@ -92,3 +92,14 @@ test('smart speed disable restores the user rate and keeps an audible bypass',as
   await e.w.chrome.storage.sync.set({smartSpeed:false});assert.equal(video.playbackRate,1);
   assert.deepEqual(edges.at(-1),['source','speaker']);
 });
+
+test('a completed native PiP open can be closed immediately without a debounce delay',async t=>{
+  const e=await content();t.after(e.close);const c=e.w.__fpipController;
+  assert.equal((await c.run('toggle-pip')).status,'ok');assert.ok(e.w.document.pictureInPictureElement);
+  assert.equal((await c.run('toggle-pip')).status,'ok');assert.equal(e.w.document.pictureInPictureElement,null);
+});
+test('panned zoom clips back to the original player bounds',async t=>{
+  const e=await content();t.after(e.close);
+  await e.w.chrome.storage.sync.set({viewSettings:{panX:0,panY:100},videoAdjust:{zoom:2}});
+  assert.equal(e.w.document.querySelector('video').style.clipPath,'inset(50% 50% 0% 0%)');
+});

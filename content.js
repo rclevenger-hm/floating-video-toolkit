@@ -70,7 +70,7 @@
       else if (action === "pause") video.pause();
       else if (["toggle-mute","mute","unmute"].includes(action)) {
         video.muted = action === "toggle-mute" ? !video.muted : action === "mute";
-        if (inAd && adVideo === video) prevMuted = video.muted;
+        if (inAd && adVideo === video) { prevMuted = video.muted; adMuteOverride=video.muted; }
       } else if (["toggle-mini","toggle-cinema"].includes(action) || /^snap-[1-4]$/.test(action)) {
         if (window.self !== window.top) return {status:"embedded-layout"};
         if (document.pictureInPictureElement) await document.exitPictureInPicture();
@@ -214,7 +214,9 @@
     adjustedStyles.set(active, "transform-origin", viewSettings.panX + "% " + viewSettings.panY + "%");
     adjustedStyles.set(active, "object-fit", ({original:"contain",fit:"contain",fill:"cover",stretch:"fill"})[viewSettings.fit]);
     adjustedStyles.set(active, "object-position", viewSettings.panX + "% " + viewSettings.panY + "%");
-    adjustedStyles.set(active, "clip-path", adj.zoom > 1 ? "inset(" + ((adj.zoom - 1) / adj.zoom * 50) + "%)" : "none");
+    const crop=(adj.zoom-1)/adj.zoom;
+    const insets=[viewSettings.panY,100-viewSettings.panX,100-viewSettings.panY,viewSettings.panX].map(p=>p*crop+"%");
+    adjustedStyles.set(active, "clip-path", adj.zoom > 1 ? "inset(" + insets.join(" ") + ")" : "none");
   }
 
   // ---- auto-PiP on tab switch ----
@@ -305,13 +307,12 @@
   }
 
   // ---- toggle PiP. Must be called from a real user gesture. ----
-  // Short lock so duplicate triggers (popup + fan-out, stale listeners) that
-  // arrive together collapse into a single on/off instead of flashing.
+  // Lock only while the request is in flight; a completed open must allow
+  // an immediate deliberate close. The worker also serializes tab actions.
   let busy = false;
   async function togglePip() {
     if (!enabled || busy) return false;
     busy = true;
-    setTimeout(() => (busy = false), 700);
     try {
       if (document.pictureInPictureElement) {
         userWantsPip = false; // explicit user exit -> stop following episodes
@@ -325,7 +326,7 @@
     } catch (err) {
       console.warn("[Floating PiP] request failed:", err && err.message);
       return false;
-    }
+    } finally { busy = false; }
   }
 
   // ---- enter PiP on a specific video ----
@@ -486,6 +487,7 @@
   let inAd = false;
   let inAdSince = 0;
   let prevMuted = null;
+  let adMuteOverride = null;
   let prevRate = null;
   let adVideo = null; // the exact element we muted/sped, so we restore THAT one
   let adRateTimer = null;
@@ -741,6 +743,7 @@
   function enterAd(matched) {
     if (inAd) return;
     inAd = true;
+    adMuteOverride = null;
     inAdSince = Date.now();
     learnedThisAd = false;
     // Once per cooldown, let one ad play normally (no speed-up) so the skip UI
@@ -915,7 +918,7 @@
         // of 2") the next ad starts under the same .ad-showing without a fresh
         // enterAd, and the player re-sets audio -- so set-once would leave ad 2
         // audible. Tied to adVideo so we never mute a different (content) element.
-        if (adVideo && !adVideo.muted) {
+        if (adVideo && adMuteOverride === null && !adVideo.muted) {
           try {
             adVideo.muted = true;
           } catch (_) {}
