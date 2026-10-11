@@ -32,6 +32,7 @@
   };
   let viewSettings = {...core.VIEW_DEFAULTS};
   let layout = null;
+  let multiView = false;
   let adj = { ...ADJ_DEFAULTS }; // display adjustments (CSS-only, DRM-safe)
 
   // ---- find the video the user is actually watching ----
@@ -45,15 +46,46 @@
   document.addEventListener("pointerdown", rememberVideo, true);
   document.addEventListener("contextmenu", rememberVideo, true);
   function getActiveVideo() {
-    return layout?.video || core.pickVideo(document.querySelectorAll("video"), selectedVideo, selectedAt);
+    return document.pictureInPictureElement || layout?.video || core.pickVideo(document.querySelectorAll("video"), selectedVideo, selectedAt);
   }
+  const streamSync = FloatingVideoSync.create({getVideo:getActiveVideo});
+  window.addEventListener('pagehide',() => streamSync.cancel());
   globalThis.__fpipController = {
     snapshot() {
       const video = getActiveVideo();
       return {enabled, host, ancestors:policyHosts(), inPip:!!document.pictureInPictureElement, inLayout:!!layout?.mode,
-        candidate: enabled && video ? core.describeVideo(video, video === selectedVideo ? selectedAt : 0) : null};
+        candidate: enabled && video ? core.describeVideo(video, video === selectedVideo ? selectedAt : 0) : null,
+        media: enabled && video ? streamSync.snapshot(video) : null};
     },
-    run:runAction
+    run:runAction,
+    async mixer(token, action, value) {
+      if (!enabled) return {status:'disabled'};
+      const video = streamSync.resolve(token);
+      if (!video) return {status:'stale-player',message:'The selected player changed. Refresh players.'};
+      if (action === 'inspect') return {status:'ok',media:streamSync.snapshot(video)};
+      selectedVideo = video;
+      selectedAt = Date.now();
+      if (['seek','hold','cancel-hold'].includes(action)) return streamSync.run(video, action, value);
+      if (action === 'volume') {
+        if (!Number.isFinite(value) || value < 0 || value > 1) return {status:'invalid'};
+        video.volume = value;
+        return {status:'ok'};
+      }
+      if (['play','pause','mute','unmute','toggle-cinema'].includes(action)) return runAction(action);
+      return {status:'unsupported'};
+    },
+    async setMultiView(active) {
+      multiView = active === true;
+      if (multiView) {
+        userWantsPip = false;
+        stopPulse(); stopAdWatch(); ssStop();
+        if (document.pictureInPictureElement) await document.exitPictureInPicture().catch(() => {});
+      } else if (enabled) {
+        if (adComfort) startAdWatch();
+        if (smartSpeed) ssStart();
+      }
+      applyVideoTweaks();
+    }
   };
 
   async function runAction(action) {
@@ -65,6 +97,7 @@
     const video = document.pictureInPictureElement || getActiveVideo();
     if (!video) return {status:"no-video"};
     try {
+      if (["play-pause","play","pause"].includes(action)) streamSync.cancel();
       if (action === "play-pause") { if (video.paused) await video.play(); else video.pause(); }
       else if (action === "play") await video.play();
       else if (action === "pause") video.pause();
@@ -142,6 +175,7 @@
   }
   function teardownAll() {
     enabled = false;
+    streamSync.cancel();
     notifyPipState(false);
     userWantsPip = false;
     stopPulse();
@@ -226,13 +260,13 @@
   // attribute too as belt-and-suspenders for players that honor it.
   let autoPipHooked = false;
   function syncAutoPipHandler() {
-    if (enabled && autoPip && !autoPipHooked) {
+    if (enabled && autoPip && !multiView && !autoPipHooked) {
       try {
         navigator.mediaSession.setActionHandler(
           "enterpictureinpicture",
           async () => {
             const v = getActiveVideo();
-            if (!enabled || !autoPip || !v || document.pictureInPictureElement) return;
+            if (!enabled || !autoPip || multiView || !v || document.pictureInPictureElement) return;
             stripFlag(v);
             try {
               await v.requestPictureInPicture();
@@ -241,7 +275,7 @@
         );
         autoPipHooked = true;
       } catch (_) {} // action unsupported on this Chrome -> attribute-only
-    } else if ((!enabled || !autoPip) && autoPipHooked) {
+    } else if ((!enabled || !autoPip || multiView) && autoPipHooked) {
       try {
         navigator.mediaSession.setActionHandler("enterpictureinpicture", null);
       } catch (_) {}
@@ -257,7 +291,7 @@
     document.querySelectorAll("video").forEach((v) => {
       stripFlag(v);
       try {
-        v.autoPictureInPicture = !!(autoPip && v === active);
+        v.autoPictureInPicture = !!(autoPip && !multiView && v === active);
       } catch (_) {}
     });
     applyAdjust(active);
@@ -899,6 +933,7 @@
   }
 
   function startAdWatch() {
+    if (multiView) return;
     // Only run where ad detection is confirmed reliable. On unverified sites we
     // stay fully dormant so a wrong selector can never touch real content.
     if (adCheckTimer || !enabled || !adComfort || !AD_RULE.verified) return;
@@ -1146,7 +1181,7 @@
     ssDriven = v;
   }
   function ssStart() {
-    if (ssTimer || !smartSpeed || !enabled) return;
+    if (ssTimer || !smartSpeed || !enabled || multiView) return;
     if (!ssAllowedHere()) {
       if (!ssStartedLog) {
         ssStartedLog = true;
@@ -1585,6 +1620,7 @@
   (async () => {
     const policy=await chrome.runtime.sendMessage({type:"GET_TAB_HOST"});
     tabHost=policy?.host || "";
+    multiView=policy?.multiView === true;
     // Read settings after the policy round trip so an exclusion changed during
     // initialization cannot be overwritten by an older storage snapshot.
     const res=await chrome.storage.sync.get(SYNC_DEFAULTS);

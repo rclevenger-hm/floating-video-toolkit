@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Floating Video Toolkit",
-  "version": "1.21.0",
-  "description": "Floating video, ultrawide fit and crop, playback shortcuts, and an in-page mini-player with four corner positions.",
+  "version": "1.22.0",
+  "description": "Multiple player pop-outs, an audio mixer, stream-delay controls, ultrawide viewing, and playback shortcuts.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -83,6 +83,12 @@
     },
     "snap-4": {
       "description": "Mini-player: bottom right corner (in-page)"
+    },
+    "open-mixer": {
+      "description": "Open multi-view & audio mixer"
+    },
+    "popout-player": {
+      "description": "Move this player tab into its own pop-out window"
     }
   },
   "content_scripts": [
@@ -96,6 +102,7 @@
         "pip-core.js",
         "page-state.js",
         "player-layout.js",
+        "stream-sync.js",
         "content.js"
       ]
     }

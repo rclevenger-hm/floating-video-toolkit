@@ -2,17 +2,18 @@
 
 [![Validate and package](https://github.com/rclevenger-hm/floating-video-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/rclevenger-hm/floating-video-toolkit/actions/workflows/ci.yml)
 
-A Chromium extension for floating video, ultrawide viewing, and keyboard playback controls. No account, backend, bundler, or runtime dependencies.
+A Chromium extension for multiple player windows, audio balancing, manual stream delay, ultrawide viewing, and keyboard playback controls. No account, backend, bundler, or runtime dependencies.
 
 ## Choose how you watch
 
 | Mode | What it does | Where it works |
 | --- | --- | --- |
+| Multi-view pop-outs | Opens each service tab in its own resizable window, with a shared audio mixer | Multiple HTTP(S) tabs; retains original players; not always on top |
 | Native Picture-in-Picture | Floats the selected video above other applications | Compatible top-page and embedded videos; browser permissions apply |
 | Mini-player | Places the video in one of four page corners, with playback controls | Inside the current tab, for top-page videos |
 | Cinema view | Creates a large in-page player with ultrawide fit and crop controls | Inside the current tab, for top-page videos |
 
-The extension probes accessible frames and controls **one video at a time**. It prefers the existing floating player, then a video you clicked, then a visible playing video. Top-page site exclusions also apply to its embedded frames.
+The toolbar probes accessible frames and controls **one selected video in a tab**. The multi-view mixer controls one selected video in each of several tabs. It prefers the existing floating player, then a video you clicked, then a visible playing video. Top-page site exclusions also apply to its embedded frames.
 
 ## Install
 
@@ -25,6 +26,30 @@ The extension probes accessible frames and controls **one video at a time**. It 
 You can also clone this repository and load its root directory directly. Chrome is the automated test target. Other Chromium browsers need their own compatibility checks; Firefox and Safari ports are not included.
 
 After an update, reload the extension on `chrome://extensions`, then reload video tabs so old content scripts are replaced.
+
+## Multiple games, services, and audio
+
+1. Start each stream in its own tab (for example, RedZone and the Chargers broadcast).
+2. Right-click the extension icon → **Multi-view & audio mixer → Open multi-view & audio mixer**.
+3. Select **Pop out** for each stream. Arrange or resize the windows with your OS. The source tabs move into these windows without being duplicated or reloaded.
+4. Balance each video's volume, mute the feeds you do not want to hear, and control play/pause from the mixer. **Mute listed players** mutes all currently listed videos; unmute your preferred commentary.
+5. Optionally choose **Video view** for a top-page video to use the existing cinema layout. Click again to restore the site's layout if it needs its original controls. Embedded players keep their service layout.
+6. Use **Return to tab** when finished. **The pop-out's X closes the source tab and stops that stream.**
+
+Pop-outs are ordinary browser windows, **not always on top**. The native PiP APIs let browsers restrict simultaneous windows; this feature does not lift those restrictions. Keep using native PiP for a single always-on-top video. Service account limits and DRM policies still apply. Netflix, Hulu and sports-provider compatibility must be checked with your actual subscriptions; fixture tests do not certify those providers.
+
+The mixer does not unmute automatically when you raise a muted player's volume. Site-level/tab-level mute and OS volume also apply. Refresh players after opening streams or changing channels; stale controls fail safely. Automatic PiP, ad comfort, and smart speed are suspended while a tab is popped out, then restored from your settings when it returns.
+
+### Delay a faster feed to match a slower broadcast
+
+Open **Sync / stream delay** on the **faster feed**. If CBS is 40 seconds behind RedZone, enter **40** on the RedZone player and choose **Rewind**. This moves back from the current position, not from a claimed global live clock. Compare a shared play/scoreboard change and use **−1 s / +1 s** to fine tune. Each rewind adds another relative delay.
+
+- **Available seek** shows the source player's contiguous seek range. Requests beyond it are rejected, not silently reduced. Up to 600 seconds per action is accepted only when that much content is available.
+- **Timed hold** pauses a playing video for 1–600 seconds and requests resume. It runs in the source page even if you close the mixer. **Play** resumes immediately; **Cancel hold** leaves the video paused. Source changes, navigation and site disable cancel pending resume. Browser suspension or device sleep can make timers late.
+- A hold **does not record the feed or create a DVR buffer**. A service may discard old content, force a return to live, reject seeks, or block automatic resume. Try its own DVR controls if that happens. If the service does not retain paused content, this extension cannot guarantee a delay.
+- Different broadcasts do not expose a common event clock. Alignment is manual and may need adjustment after ads or buffering. Disable speed-changing features for streams kept in ordinary tabs while syncing.
+
+Implementation references: [Chrome window API](https://developer.chrome.com/docs/extensions/reference/api/windows), [Document PiP limits](https://wicg.github.io/document-picture-in-picture/), and [source-player seekable ranges](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/seekable).
 
 ## Playback and shortcuts
 
@@ -106,7 +131,7 @@ npm run package
 
 The package is written to `dist/floating-video-toolkit-VERSION.zip` with a SHA-256 checksum. It contains only extension assets, this README, and privacy documentation. Tests, fixtures, dependency folders, and development scripts are excluded.
 
-CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.21.0.md).
+CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.22.0.md).
 
 ## Troubleshooting
 

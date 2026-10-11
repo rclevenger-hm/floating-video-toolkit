@@ -1,4 +1,5 @@
 importScripts("pip-core.js");
+importScripts("multi-view.js");
 
 // Probe every accessible frame, then send the action to exactly one document.
 // Both functions execute in the content script's isolated world.
@@ -45,6 +46,8 @@ const STATUS_LABELS = {
   reload:"Reload the page to enable Floating Video.", busy:"A video action is already running."
 };
 async function performAction(tabId, action = "toggle-pip") {
+  if (action === 'open-mixer') return FloatingVideoMultiView.openMixer();
+  if (action === 'popout-player') return FloatingVideoMultiView.popoutTab(tabId);
   const result = await callToggle(tabId, action);
   const message = result.status === "ok" ? "Floating Video — ready" : STATUS_LABELS[result.status] || "Video action unavailable";
   await chrome.action.setTitle({tabId,title:message});
@@ -93,7 +96,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     };
     ownerWrite=ownerWrite.then(updateOwner).catch(() => {});
   } else if (msg?.type === "GET_TAB_HOST") {
-    sendResponse({host: hostOf(sender.tab?.url)});
+    chrome.storage.session.get('multiViewWindows').then(({multiViewWindows = {}}) => {
+      sendResponse({host:hostOf(sender.tab?.url),multiView:multiViewWindows[tabId]?.windowId === sender.tab.windowId});
+    });
+    return true;
   } else if (msg?.type === "FAN_OUT_PIP") {
     performAction(tabId).then(sendResponse);
     return true;
@@ -154,6 +160,7 @@ const SPEED_TITLE = {
 function createMenu() {
   chrome.contextMenus.removeAll(() => {
     const groups = {
+      multi:["Multi-view & audio mixer",["open-mixer","popout-player"]],
       playback:["Playback",["play-pause","play","pause","toggle-mute","mute","unmute"]],
       view:["Ultrawide & mini-player",["toggle-mini","toggle-cinema","cycle-fit","zoom-in","zoom-out","reset-view"]],
       corner:["Mini-player corner",["snap-1","snap-2","snap-3","snap-4"]]

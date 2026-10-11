@@ -12,6 +12,14 @@
 - Clear settings, exact-host exclusions, and experimental feature labels.
 - Local regression coverage, Chromium fixtures, tested packaging, and tag releases.
 
+## Implemented in 1.22.0
+
+- Concurrent existing-tab pop-out windows with safe return destinations.
+- Shared per-player volume, mute and playback mixer.
+- Manual DVR rewind and one-second nudges within available source ranges.
+- Source-page timed holds with cancellation, stale-source protection and resume feedback.
+- Per-pop-out suspension of automatic PiP, smart speed and ad comfort.
+
 ## Next
 
 1. Record a live compatibility matrix for commonly used streaming players and supported browser versions.

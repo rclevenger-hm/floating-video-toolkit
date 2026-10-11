@@ -33,5 +33,5 @@ function environment({url='https://top.example/watch',settings={},tabHost='top.e
   const load=names=>{for(const name of names)w.eval(fs.readFileSync(path.join(root,name),'utf8'));};
   return {dom,w,sync,local,intervals,mediaHandlers,load,flush,close:()=>dom.window.close()};
 }
-async function content(options){const env=environment(options);env.load(['pip-core.js','page-state.js','player-layout.js','content.js']);await flush();return env;}
+async function content(options){const env=environment(options);env.load(['pip-core.js','page-state.js','player-layout.js','stream-sync.js','content.js']);await flush();return env;}
 module.exports={environment,content,flush,root};
