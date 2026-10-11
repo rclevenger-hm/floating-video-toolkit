@@ -53,3 +53,10 @@ test('video identity changes rather than redirecting a stale mixer action',()=>{
   const s=setup();const first=s.sync.snapshot().id;
   s.select(setup().video);assert.equal(s.sync.resolve(first),null);assert.notEqual(s.sync.snapshot().id,first);
 });
+
+test('reusing the same element for a new source invalidates old mixer tokens',()=>{
+  const s=setup();const first=s.sync.snapshot().id;
+  s.video.currentSrc='new-stream';assert.equal(s.sync.resolve(first),null);
+  const second=s.sync.snapshot().id;
+  s.video.dispatchEvent(new Event('emptied'));assert.equal(s.sync.resolve(second),null);
+});

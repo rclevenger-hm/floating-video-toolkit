@@ -112,13 +112,17 @@ test('multi-view keeps two source tabs alive with independent mixer controls and
   await expect(mixer.locator('.player')).toHaveCount(2);
   await redzone.getByRole('button',{name:'Pop out',exact:true}).click();
   await chargers.getByRole('button',{name:'Pop out',exact:true}).click();
+  await expect.poll(()=>extension.worker.evaluate(async({ids,original})=>{
+    const tabs=await Promise.all(ids.map(id=>chrome.tabs.get(id)));
+    return tabs.every(t=>t.windowId!==original);
+  },{ids:[firstId,secondId],original:originalWindowId})).toBe(true);
   const windowIds=await extension.worker.evaluate(async ids=>Promise.all(ids.map(async id=>(await chrome.tabs.get(id)).windowId)),[firstId,secondId]);
   expect(new Set(windowIds).size).toBe(2);expect(windowIds).not.toContain(originalWindowId);
   expect(await second.locator('#main').getAttribute('data-identity')).toBe('original');
   await redzone.getByRole('button',{name:'Unmute',exact:true}).click();
   await expect.poll(()=>first.locator('#main').evaluate(v=>v.muted)).toBe(false);
   expect(await second.locator('#main').evaluate(v=>v.muted)).toBe(true);
-  await chargers.getByRole('slider').fill('25');
+  await chargers.getByRole('slider').evaluate(input=>{input.value='25';input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));});
   await expect.poll(()=>second.locator('#main').evaluate(v=>v.volume)).toBe(0.25);
   expect(await first.locator('#main').evaluate(v=>v.volume)).toBe(1);
   await redzone.getByRole('button',{name:'Pause',exact:true}).click();
@@ -146,7 +150,8 @@ test('mixer requests valid seeks, rejects missing buffer, and holds survive pane
   await row.locator('summary').click();await row.locator('.seconds').fill('600');
   await row.getByRole('button',{name:'Rewind',exact:true}).click();
   await expect(row.locator('.row-status')).toContainText('outside');
-  await page.locator('#main').evaluate(v=>{v.currentTime=2;});
+  await page.locator('#main').evaluate(v=>{v.pause();v.currentTime=2;});
+  await expect.poll(()=>page.locator('#main').evaluate(v=>!v.seeking && v.currentTime)).toBeCloseTo(2,1);
   await row.locator('.seconds').fill('1');await row.getByRole('button',{name:'Rewind',exact:true}).click();
   await expect.poll(()=>page.locator('#main').evaluate(v=>v.currentTime)).toBeCloseTo(1,1);
   await row.getByRole('button',{name:'Play',exact:true}).click();
