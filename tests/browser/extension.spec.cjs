@@ -24,7 +24,7 @@ async function command(extension,tabId,action){return extension.worker.evaluate(
 test('settings persist crop and exclusions; all shortcuts are visible',async({extension},testInfo)=>{
   const page=await extension.context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(`chrome-extension://${extension.id}/options.html`);
-  await expect(page.locator('.shortcut')).toHaveCount(17);
+  await expect(page.locator('.shortcut')).toHaveCount(19);
   await page.locator('#view-fit').selectOption('fill');await page.locator('#view-ratio').selectOption('21:9');
   await page.locator('#siteHost').fill('https://EXAMPLE.COM/watch');await page.getByRole('button',{name:'Add exclusion'}).click();
   await expect(page.locator('#sitesBody')).toContainText('example.com');
@@ -98,4 +98,74 @@ test('page-button native PiP follows playback shortcuts across tabs',async({exte
   expect(await page.locator('#main').evaluate(v=>v.paused)).toBe(true);
   await page.bringToFront();await page.getByRole('button',{name:'Toggle floating video',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>Boolean(document.pictureInPictureElement))).toBe(false);
+});
+
+test('multi-view keeps two source tabs alive with independent mixer controls and returns them safely',async({extension},testInfo)=>{
+  const {page:first,tabId:firstId}=await player(extension);
+  const second=await extension.context.newPage();await second.goto(playerURL+'?second');
+  await second.locator('#main').evaluate(v=>{v.dataset.identity='original';return v.play();});
+  await first.evaluate(()=>document.title='RedZone fixture');await second.evaluate(()=>document.title='Chargers fixture');
+  const secondId=await extension.worker.evaluate(async()=> (await chrome.tabs.query({})).find(t=>t.url?.endsWith('?second')).id);
+  const originalWindowId=await extension.worker.evaluate(async id=>(await chrome.tabs.get(id)).windowId,firstId);
+  const mixer=await extension.context.newPage();await mixer.goto(`chrome-extension://${extension.id}/mixer.html`);
+  const redzone=mixer.locator('.player').filter({hasText:'RedZone fixture'}),chargers=mixer.locator('.player').filter({hasText:'Chargers fixture'});
+  await expect(mixer.locator('.player')).toHaveCount(2);
+  await redzone.getByRole('button',{name:'Pop out',exact:true}).click();
+  await chargers.getByRole('button',{name:'Pop out',exact:true}).click();
+  const windowIds=await extension.worker.evaluate(async ids=>Promise.all(ids.map(async id=>(await chrome.tabs.get(id)).windowId)),[firstId,secondId]);
+  expect(new Set(windowIds).size).toBe(2);expect(windowIds).not.toContain(originalWindowId);
+  expect(await second.locator('#main').getAttribute('data-identity')).toBe('original');
+  await redzone.getByRole('button',{name:'Unmute',exact:true}).click();
+  await expect.poll(()=>first.locator('#main').evaluate(v=>v.muted)).toBe(false);
+  expect(await second.locator('#main').evaluate(v=>v.muted)).toBe(true);
+  await chargers.getByRole('slider').fill('25');
+  await expect.poll(()=>second.locator('#main').evaluate(v=>v.volume)).toBe(0.25);
+  expect(await first.locator('#main').evaluate(v=>v.volume)).toBe(1);
+  await redzone.getByRole('button',{name:'Pause',exact:true}).click();
+  await expect.poll(()=>first.locator('#main').evaluate(v=>v.paused)).toBe(true);
+  expect(await second.locator('#main').evaluate(v=>v.paused)).toBe(false);
+  await chargers.getByRole('button',{name:'Video view',exact:true}).click();
+  await expect(second.locator('#fpip-player')).toHaveCount(1);
+  await mixer.screenshot({path:testInfo.outputPath('multi-view-mixer.png'),fullPage:true});
+  await mixer.setViewportSize({width:390,height:844});
+  expect(await mixer.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await mixer.screenshot({path:testInfo.outputPath('multi-view-mobile.png'),fullPage:true});
+  await redzone.getByRole('button',{name:'Return to tab',exact:true}).click();
+  await chargers.getByRole('button',{name:'Return to tab',exact:true}).click();
+  await expect.poll(()=>extension.worker.evaluate(async id=>(await chrome.tabs.get(id)).windowId,secondId)).toBe(originalWindowId);
+  await expect(second.locator('#fpip-player')).toHaveCount(0);
+  expect(await second.locator('#main').getAttribute('data-identity')).toBe('original');
+});
+
+test('mixer requests valid seeks, rejects missing buffer, and holds survive panel closure',async({extension})=>{
+  const {page}=await player(extension);
+  await page.locator('iframe').evaluate(frame=>frame.remove());
+  await page.locator('#main').evaluate(v=>{v.loop=true;v.pause();v.currentTime=2;});
+  const mixer=await extension.context.newPage();await mixer.goto(`chrome-extension://${extension.id}/mixer.html`);
+  const row=mixer.locator('.player');await expect(row).toHaveCount(1);
+  await row.locator('summary').click();await row.locator('.seconds').fill('600');
+  await row.getByRole('button',{name:'Rewind',exact:true}).click();
+  await expect(row.locator('.row-status')).toContainText('outside');
+  await page.locator('#main').evaluate(v=>{v.currentTime=2;});
+  await row.locator('.seconds').fill('1');await row.getByRole('button',{name:'Rewind',exact:true}).click();
+  await expect.poll(()=>page.locator('#main').evaluate(v=>v.currentTime)).toBeCloseTo(1,1);
+  await row.getByRole('button',{name:'Play',exact:true}).click();
+  await expect.poll(()=>page.locator('#main').evaluate(v=>v.paused)).toBe(false);
+  await row.locator('.seconds').fill('2');await row.getByRole('button',{name:'Timed hold',exact:true}).click();
+  await expect.poll(()=>page.locator('#main').evaluate(v=>v.paused)).toBe(true);
+  await mixer.close();
+  await expect.poll(()=>page.locator('#main').evaluate(v=>v.paused)).toBe(false);
+});
+
+test('stale mixer documents cannot control a navigated source and source pages cannot invoke privileged window actions',async({extension})=>{
+  const {page,tabId}=await player(extension);
+  const target=await extension.worker.evaluate(async()=> (await FloatingVideoMultiView.scan()).players[0]);
+  const denied=await extension.worker.evaluate(async id=>{
+    return (await chrome.scripting.executeScript({target:{tabId:id},func:()=>chrome.runtime.sendMessage({type:'MULTI_VIEW',action:'scan'})}))[0].result;
+  },tabId);
+  expect(denied.status).toBe('forbidden');
+  await page.reload();
+  const result=await extension.worker.evaluate(async target=>FloatingVideoMultiView.control(target,'pause'),target);
+  expect(result.status).not.toBe('ok');
+  await expect.poll(()=>page.locator('#main').evaluate(v=>v.paused)).toBe(false);
 });

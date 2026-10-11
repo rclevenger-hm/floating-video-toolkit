@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Multi-view · Floating Video Toolkit</title><link rel="stylesheet" href="mixer.css"></head>
+<body><header><p class="eyebrow">FLOATING VIDEO TOOLKIT</p><h1>Multi-view & audio mixer</h1>
+<p>Keep your games together. Choose the commentary. Delay the faster feed.</p>
+<div class="toolbar"><button id="refresh">Refresh players</button><button id="mute-all">Mute listed players</button></div></header>
+<aside>Pop-outs keep the original service tab running. They are resizable browser windows, <strong>not always on top</strong>.
+Use <strong>Return to tab</strong> to keep watching; closing a pop-out with X closes that stream.</aside>
+<p id="status" role="status" aria-live="polite">Looking for players…</p>
+<main id="players" aria-label="Video players"></main>
+<template id="player-template"><section class="player">
+  <div class="heading"><div><p class="host"></p><h2></h2></div><span class="play-state"></span></div>
+  <div class="toolbar"><button data-action="popout">Pop out</button><button data-action="restore">Return to tab</button>
+    <button data-action="focus">Show source</button><button data-action="toggle-cinema">Video view</button></div>
+  <div class="audio"><button data-action="playback">Pause</button><button data-action="muting">Mute</button>
+    <label>Volume <input class="volume" type="range" min="0" max="100" step="1"><output class="volume-value"></output></label>
+  </div>
+  <details><summary>Sync / stream delay</summary>
+    <p class="buffer"></p>
+    <label class="delay-label">Seconds <input class="seconds" type="number" min="1" max="600" step="1" value="30"></label>
+    <div class="toolbar"><button data-action="rewind">Rewind</button><button data-action="hold">Timed hold</button><button data-action="cancel-hold">Cancel hold</button></div>
+    <div class="toolbar"><span>Fine tune</span><button data-action="back-one">−1 s</button><button data-action="forward-one">+1 s</button></div>
+    <p class="sync-state" role="status"></p>
+  </details>
+  <p class="row-status" role="status"></p>
+</section></template>
+<footer><h2>Sync RedZone with a slower game feed</h2><ol>
+<li>Start both streams, then refresh players and pop out each one.</li>
+<li>On the <strong>faster feed</strong>, rewind by the estimated gap. Use −1 / +1 second to line up a shared play or scoreboard change.</li>
+<li>If rewind is unavailable, try a timed hold. It pauses now and requests resume after the chosen time, even if you close this mixer.</li>
+</ol><p>Available rewind is the source player’s seek range, not measured broadcast latency. A hold does not record video or create a DVR buffer. Services may discard paused content, jump to live, or block resume. Different broadcasts can drift; sync is manual.</p>
+<p>Pop-outs suspend automatic PiP, ad comfort and smart speed. For streams left in normal tabs, disable speed-changing features in settings while syncing. Video view is optional and requires a top-page player; turn it off if the site’s controls stop working.</p></footer>
+<script src="mixer.js"></script></body></html>

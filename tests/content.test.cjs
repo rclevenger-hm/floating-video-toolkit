@@ -12,7 +12,7 @@ test('disabling restores original video styles, flags, caption modes, and auto-P
   const e=environment({settings:{ccPip:true,videoAdjust:{zoom:1.5,brightness:1.2}},html:'<video style="opacity:1;filter:sepia(1);transform:rotate(4deg)" disablepictureinpicture></video>'});t.after(e.close);
   const video=e.w.document.querySelector('video');const track={kind:'captions',label:'English',mode:'hidden',cues:[{}]};
   Object.defineProperty(video,'textTracks',{value:[track]});
-  e.load(['pip-core.js','page-state.js','player-layout.js','content.js']);await flush();
+  e.load(['pip-core.js','page-state.js','player-layout.js','stream-sync.js','content.js']);await flush();
   assert.equal(video.hasAttribute('disablepictureinpicture'),false);
   assert.equal((await e.w.__fpipController.run('toggle-pip')).status,'ok');
   assert.equal(track.mode,'showing');
@@ -76,7 +76,7 @@ test('late caption fetch cannot recreate tracks after disabling the site',async 
   let release;const pending=new Promise(resolve=>{release=resolve;});let tracksAdded=0;
   e.w.fetch=async url=>{if(url.includes('watch?')) {await pending;return {text:async()=>'{"captionTracks":[{"baseUrl":"https://captions.example/?a=1","languageCode":"en"}],"x":1}'};}return {json:async()=>({events:[{tStartMs:0,dDurationMs:1000,segs:[{utf8:'hello'}]}]})};};
   const video=e.w.document.querySelector('video');video.addTextTrack=()=>{tracksAdded++;throw new Error('Unexpected track creation');};
-  e.load(['pip-core.js','page-state.js','player-layout.js','content.js']);await flush();
+  e.load(['pip-core.js','page-state.js','player-layout.js','stream-sync.js','content.js']);await flush();
   await e.w.__fpipController.run('toggle-pip');await e.w.chrome.storage.sync.set({disabledHosts:['www.youtube.com']});
   release();await flush();await flush();assert.equal(tracksAdded,0);
 });
@@ -87,7 +87,7 @@ test('smart speed disable restores the user rate and keeps an audible bypass',as
   const analyser={frequencyBinCount:1024,fftSize:2048,connect:node=>edges.push(['analyser',node]),disconnect:()=>edges.push(['disconnect-analyser']),getByteFrequencyData:buffer=>buffer.fill(70)};
   e.w.AudioContext=class {constructor(){this.state='running';this.sampleRate=48000;this.destination='speaker';}createMediaElementSource(){return source;}createAnalyser(){return analyser;}};
   const video=e.w.document.querySelector('video');video.src='https://top.example/movie.webm';
-  e.load(['pip-core.js','page-state.js','player-layout.js','content.js']);await flush();
+  e.load(['pip-core.js','page-state.js','player-layout.js','stream-sync.js','content.js']);await flush();
   [...e.intervals.values()].find(i=>i.ms===150).fn();assert.equal(video.playbackRate,1.25);
   await e.w.chrome.storage.sync.set({smartSpeed:false});assert.equal(video.playbackRate,1);
   assert.deepEqual(edges.at(-1),['source','speaker']);
@@ -102,4 +102,36 @@ test('panned zoom clips back to the original player bounds',async t=>{
   const e=await content();t.after(e.close);
   await e.w.chrome.storage.sync.set({viewSettings:{panX:0,panY:100},videoAdjust:{zoom:2}});
   assert.equal(e.w.document.querySelector('video').style.clipPath,'inset(50% 50% 0% 0%)');
+});
+
+test('mixer controls are bounded, pinned to a video, and obey exclusions',async t=>{
+  const e=await content();t.after(e.close);const c=e.w.__fpipController,v=e.w.document.querySelector('video');
+  const id=c.snapshot().media.id;
+  assert.equal((await c.mixer(id,'volume',0.3)).status,'ok');assert.equal(v.volume,0.3);
+  assert.equal((await c.mixer(id,'volume',2)).status,'invalid');assert.equal(v.volume,0.3);
+  assert.equal((await c.mixer('stale','mute')).status,'stale-player');assert.equal(v.muted,false);
+  await c.mixer(id,'mute');assert.equal(v.muted,true);
+  await e.w.chrome.storage.sync.set({disabledHosts:['top.example']});
+  assert.equal((await c.mixer(id,'unmute')).status,'disabled');assert.equal(v.muted,true);
+});
+test('pop-out mode suppresses automatic PiP and speed changes without altering preferences',async t=>{
+  const e=await content({settings:{autoPip:true,smartSpeed:true,ssExtraHosts:['top.example']}});t.after(e.close);
+  const c=e.w.__fpipController,v=e.w.document.querySelector('video');
+  await c.setMultiView(true);
+  assert.equal(v.autoPictureInPicture,false);assert.equal(e.mediaHandlers.get('enterpictureinpicture'),null);
+  assert.equal([...e.intervals.values()].some(i=>i.ms===150),false);
+  await e.w.chrome.storage.sync.set({smartSpeed:true,autoPip:true});
+  assert.equal([...e.intervals.values()].some(i=>i.ms===150),false);
+  await c.setMultiView(false);assert.equal(v.autoPictureInPicture,true);
+  assert.equal(typeof e.mediaHandlers.get('enterpictureinpicture'),'function');
+  assert.equal(e.sync.smartSpeed,true);assert.equal(e.sync.autoPip,true);
+});
+test('explicit pause and site disable cancel timed resume',async t=>{
+  const e=await content();t.after(e.close);const c=e.w.__fpipController,v=e.w.document.querySelector('video');const id=c.snapshot().media.id;
+  await c.mixer(id,'hold',30);assert.equal(c.snapshot().media.holding,true);
+  await c.run('pause');assert.equal(c.snapshot().media.holding,false);assert.equal(v.paused,true);
+  await c.run('play');await c.mixer(id,'hold',30);
+  await e.w.chrome.storage.sync.set({disabledHosts:['top.example']});
+  await e.w.chrome.storage.sync.set({disabledHosts:[]});
+  assert.equal(c.snapshot().media.holding,false);assert.equal(v.paused,true);
 });

@@ -13,7 +13,7 @@ def build():
     version = manifest['version']
     if package['version'] != version:
         raise ValueError('package.json and manifest.json versions must agree')
-    files = {'manifest.json', 'options.css', 'README.md'}
+    files = {'manifest.json', 'options.css', 'README.md', 'multi-view.js', 'mixer.html', 'mixer.css', 'mixer.js'}
     files.update(str(file.relative_to(ROOT)) for file in (ROOT / 'docs').rglob('*.md'))
     files.add(manifest['background']['service_worker'])
     files.add(manifest['options_ui']['page'])
