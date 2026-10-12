@@ -26,7 +26,9 @@ for (const showButton of [false,true]) test(`toolbar opens and closes native PiP
   const {page}=await player(extension);
   const cdp=await extension.context.newCDPSession(page);
   const browserCDP=await extension.context.browser().newBrowserCDPSession();
-  const {targetInfo}=await cdp.send('Target.getTargetInfo');
+  const {targetInfos}=await browserCDP.send('Target.getTargets',{filter:[{type:'tab',exclude:false}]});
+  const targetInfo=targetInfos.find(target=>target.url===page.url());
+  expect(targetInfo).toBeTruthy();
   const read=async expression=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true,userGesture:false})).result.value;
   // Playwright evaluate() supplies a gesture by default. Let setup gestures
   // expire and use raw CDP reads so they cannot hide toolbar activation bugs.
@@ -114,6 +116,34 @@ test('page-button native PiP follows playback shortcuts across tabs',async({exte
   expect(await page.locator('#main').evaluate(v=>v.paused)).toBe(true);
   await page.bringToFront();await page.getByRole('button',{name:'Toggle floating video',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>Boolean(document.pictureInPictureElement))).toBe(false);
+});
+
+test('page buttons follow visible players, including cross-origin embeds, without leaking onto empty pages',async({extension})=>{
+  await extension.worker.evaluate(()=>chrome.storage.sync.set({showButton:true,autoPip:false}));
+  const {page}=await player(extension);
+  const button=page.locator('#fpip-button');
+  const child=page.frameLocator('iframe');
+  await expect(button).toHaveCount(1);
+  await expect(child.locator('#fpip-button')).toHaveCount(1);
+  const box=await button.boundingBox(),videoBox=await page.locator('#main').boundingBox();
+  expect(box.x).toBeGreaterThan(videoBox.x);expect(box.x+box.width).toBeLessThanOrEqual(videoBox.x+videoBox.width);
+  expect(box.y).toBeGreaterThanOrEqual(videoBox.y);
+  await page.locator('#main').evaluate(video=>video.style.opacity='0');
+  await expect(button).toHaveCount(0);
+  await page.locator('iframe').evaluate(frame=>frame.style.display='none');
+  await expect(child.locator('#fpip-button')).toHaveCount(0);
+  await page.locator('iframe').evaluate(frame=>frame.style.display='');
+  await expect(child.locator('#fpip-button')).toHaveCount(1);
+  await child.locator('#fpip-button').click();
+  await expect.poll(()=>child.locator('video').evaluate(v=>v===document.pictureInPictureElement)).toBe(true);
+  await child.locator('#fpip-button').click();
+  await page.locator('iframe').evaluate(frame=>frame.remove());
+  await page.locator('#main').evaluate(video=>{video.style.opacity='1';video.style.marginTop='1800px';});
+  await expect(button).toHaveCount(0);
+  await page.locator('#main').scrollIntoViewIfNeeded();await expect(button).toHaveCount(1);
+  await page.locator('#main').evaluate(video=>video.remove());await expect(button).toHaveCount(0);
+  await page.evaluate(()=>document.body.innerHTML='<h1>Job search</h1><p>No video here</p>');
+  await expect(button).toHaveCount(0);
 });
 
 test('multi-view keeps two source tabs alive with independent mixer controls and returns them safely',async({extension},testInfo)=>{
