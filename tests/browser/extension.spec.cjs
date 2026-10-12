@@ -209,18 +209,32 @@ test('popout command keeps the player focused when creating or reusing the mixer
   const {page,tabId}=await player(extension);
   await page.locator('#main').evaluate(v=>v.dataset.identity='original');
   for (let attempt=0;attempt<3;attempt++) {
-    const state=await extension.worker.evaluate(async({id,attempt})=>{
+    if (attempt>0) {
       // Reuse the existing mixer, including the pre-Chrome-116 lookup fallback.
-      if (attempt===2) chrome.runtime.getContexts=undefined;
-      if (attempt>0) await FloatingVideoMultiView.openMixer();
+      await extension.worker.evaluate(async attempt=>{
+        if (attempt===2) chrome.runtime.getContexts=undefined;
+        await FloatingVideoMultiView.openMixer();
+      },attempt);
+      // Model separate user actions: let opening the mixer finish activation
+      // before requesting the player, rather than racing two window activations.
+      const mixer=extension.context.pages().find(p=>p.url()===`chrome-extension://${extension.id}/mixer.html`);
+      const mixerWindow=await mixer.evaluate(async()=> (await chrome.windows.getCurrent()).id);
+      await expect.poll(()=>extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id)).toBe(mixerWindow);
+    }
+    const state=await extension.worker.evaluate(async id=>{
       const result=await performAction(id,'popout-player');
       const tab=await chrome.tabs.get(id);
       return {status:result.status,player:tab.windowId};
-    },{id:tabId,attempt});
+    },tabId);
     expect(state.status).toBe('ok');
     // Window creation resolves before its tab finishes navigating to mixer.html.
     await expect.poll(()=>extension.context.pages().filter(p=>p.url()===`chrome-extension://${extension.id}/mixer.html`).length).toBe(1);
-    await expect.poll(()=>extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id),{message:`attempt ${attempt}`}).toBe(state.player);
+    try {
+      await expect.poll(()=>extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id),{message:`attempt ${attempt}`}).toBe(state.player);
+    } catch (error) {
+      console.log('Focus failure',attempt,state,await extension.worker.evaluate(async()=>({windows:await chrome.windows.getAll(),saved:await chrome.storage.session.get('multiViewWindows')})));
+      throw error;
+    }
   }
   expect(await page.locator('#main').getAttribute('data-identity')).toBe('original');
 });
