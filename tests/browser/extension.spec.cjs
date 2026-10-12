@@ -3,7 +3,7 @@ const path=require('node:path');
 const test=base.extend({extension:async({},use)=>{
   const root=path.resolve(__dirname,'../..');
   const context=await chromium.launchPersistentContext('',{channel:'chromium',headless:true,viewport:{width:1280,height:960},
-    args:['--disable-extensions-except='+root,'--load-extension='+root]});
+    args:['--enable-unsafe-extension-debugging','--disable-extensions-except='+root,'--load-extension='+root]});
   const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
   await use({context,worker,id:worker.url().split('/')[2]});await context.close();
 }});
@@ -20,6 +20,21 @@ async function player(extension){
   return {page,tabId};
 }
 async function command(extension,tabId,action){return extension.worker.evaluate(async({tabId,action})=>callToggle(tabId,action),{tabId,action});}
+
+for (const showButton of [false,true]) test(`toolbar opens and closes native PiP without a page gesture (page button ${showButton})`,async({extension})=>{
+  await extension.worker.evaluate(value=>chrome.storage.sync.set({showButton:value,autoPip:false}),showButton);
+  const {page}=await player(extension);
+  const cdp=await extension.context.newCDPSession(page);
+  const {targetInfo}=await cdp.send('Target.getTargetInfo');
+  const read=async expression=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true,userGesture:false})).result.value;
+  // Playwright evaluate() supplies a gesture by default. Let setup gestures
+  // expire and use raw CDP reads so they cannot hide toolbar activation bugs.
+  await expect.poll(()=>read('navigator.userActivation.isActive'),{timeout:8000}).toBe(false);
+  await cdp.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
+  await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(true);
+  await cdp.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
+  await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(false);
+});
 
 test('settings persist crop and exclusions; all shortcuts are visible',async({extension},testInfo)=>{
   const page=await extension.context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
