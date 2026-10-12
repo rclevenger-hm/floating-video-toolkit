@@ -9,9 +9,11 @@ function worker(session={}) {
     Object.assign(win,info);return win;
   }
   const event=key=>({addListener:fn=>listeners[key]=fn});
-  const chrome={runtime:{id:'extension',getURL:path=>'chrome-extension://extension/'+path,onMessage:event('message')},
+  const mixerContext=()=>[...tabs.values()].filter(t=>t.url==='chrome-extension://extension/mixer.html').map(t=>({tabId:t.id,windowId:t.windowId}));
+  const chrome={runtime:{id:'extension',getURL:path=>'chrome-extension://extension/'+path,onMessage:event('message'),
+    getContexts:async()=>mixerContext(),sendMessage:async()=>mixerContext()[0]||null},
     storage:{sync:{get:async()=>({disabledHosts:blocked})},session:{get:async()=>structuredClone(session),set:async value=>Object.assign(session,structuredClone(value))}},
-    tabs:{query:async()=>[...tabs.values()],get:async id=>{if(!tabs.has(id))throw Error('closed');return tabs.get(id);},
+    tabs:{query:async()=>[...tabs.values()].map(t=>t.url?.startsWith('chrome-extension:')?{...t,url:undefined}:t),get:async id=>{if(!tabs.has(id))throw Error('closed');return tabs.get(id);},
       move:async(id,info)=>{calls.push(['move',id,info]);tabs.get(id).windowId=info.windowId;listeners.attached?.(id);},
       update:async(id,info)=>{calls.push(['tab-update',id,info]);Object.assign(tabs.get(id),info);return tabs.get(id);},onRemoved:event('removed'),onAttached:event('attached')},
     windows:{get:async id=>{if(!windows.has(id))throw Error('closed');return windows.get(id);},
@@ -68,6 +70,13 @@ test('explicitly opening the mixer restores its minimized window',async()=>{
   const w=worker();await w.api.openMixer();const id=foreground(w);
   await w.chrome.windows.update(id,{state:'minimized'});await w.chrome.windows.update(10,{focused:true});
   await w.api.openMixer();assert.equal(foreground(w),id);assert.equal(w.windows.get(id).state,'normal');
+  assert.equal(w.calls.filter(c=>c[0]==='create').length,1);
+});
+test('older Chrome can find its mixer without extension URLs from tabs.query',async()=>{
+  const w=worker();delete w.chrome.runtime.getContexts;
+  await w.api.openMixer();const id=foreground(w);
+  await w.chrome.windows.update(10,{focused:true});
+  await w.api.openMixer();assert.equal(foreground(w),id);
   assert.equal(w.calls.filter(c=>c[0]==='create').length,1);
 });
 test('two popouts move existing tabs once and survive service-worker restarts',async()=>{

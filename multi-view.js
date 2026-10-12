@@ -72,9 +72,13 @@
     if (mixerOpen) return mixerOpen;
     mixerOpen = (async () => {
       const url = chrome.runtime.getURL('mixer.html');
-      const existing = (await chrome.tabs.query({})).find(tab => tab.url === url);
+      // tabs.query() can omit even our own extension URLs without "tabs" access.
+      // Inspect only our extension contexts; older Chrome can ask the mixer itself.
+      const existing = chrome.runtime.getContexts ?
+        (await chrome.runtime.getContexts({contextTypes:['TAB'],documentUrls:[url]}))[0] :
+        await chrome.runtime.sendMessage({type:'FIND_MIXER'}).catch(() => null);
       if (existing) {
-        if (focus) await focusTab(existing);
+        if (focus) await focusTab(await chrome.tabs.get(existing.tabId));
       } else await chrome.windows.create({url,type:'popup',width:620,height:820,focused:focus});
       return {status:'ok'};
     })();

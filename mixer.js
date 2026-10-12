@@ -1,5 +1,11 @@
 (() => {
   'use strict';
+  // Compatibility with Chrome versions before runtime.getContexts (116).
+  chrome.runtime.onMessage.addListener((msg,sender,sendResponse) => {
+    if (msg?.type !== 'FIND_MIXER' || sender.id !== chrome.runtime.id) return;
+    chrome.tabs.getCurrent().then(tab => sendResponse(tab ? {tabId:tab.id} : null),() => sendResponse(null));
+    return true;
+  });
   const list = document.querySelector('#players'), status = document.querySelector('#status');
   const rows = new Map();
   let busy = false;

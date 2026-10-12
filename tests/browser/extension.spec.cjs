@@ -208,19 +208,18 @@ test('popout command keeps the player focused when creating or reusing the mixer
   await extension.worker.evaluate(()=>chrome.storage.sync.set({autoPip:false}));
   const {page,tabId}=await player(extension);
   await page.locator('#main').evaluate(v=>v.dataset.identity='original');
-  for (let attempt=0;attempt<2;attempt++) {
-    const state=await extension.worker.evaluate(async id=>{
-      // On the second attempt this puts the existing mixer in front first.
-      const url=chrome.runtime.getURL('mixer.html');
-      if ((await chrome.tabs.query({})).some(t=>t.url===url)) await FloatingVideoMultiView.openMixer();
+  for (let attempt=0;attempt<3;attempt++) {
+    const state=await extension.worker.evaluate(async({id,attempt})=>{
+      // Reuse the existing mixer, including the pre-Chrome-116 lookup fallback.
+      if (attempt===2) chrome.runtime.getContexts=undefined;
+      if (attempt>0) await FloatingVideoMultiView.openMixer();
       const result=await performAction(id,'popout-player');
       const tab=await chrome.tabs.get(id);
       return {status:result.status,player:tab.windowId,focused:(await chrome.windows.getLastFocused()).id};
-    },tabId);
+    },{id:tabId,attempt});
     expect(state.status).toBe('ok');expect(state.focused).toBe(state.player);
     // Window creation resolves before its tab finishes navigating to mixer.html.
-    await expect.poll(()=>extension.worker.evaluate(async()=>
-      (await chrome.tabs.query({})).filter(t=>t.url===chrome.runtime.getURL('mixer.html')).length)).toBe(1);
+    await expect.poll(()=>extension.context.pages().filter(p=>p.url()===`chrome-extension://${extension.id}/mixer.html`).length)).toBe(1);
     expect(await extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id)).toBe(state.player);
   }
   expect(await page.locator('#main').getAttribute('data-identity')).toBe('original');
