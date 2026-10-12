@@ -115,6 +115,13 @@ async function commandTarget(command) {
 }
 chrome.commands.onCommand.addListener(command => {
   if (!chrome.runtime.getManifest().commands[command]) return;
+  if (!PLAYBACK_COMMANDS.has(command)) {
+    // In particular, Alt+P must retain the command's gesture just like a click.
+    chrome.tabs.query({active:true,currentWindow:true}, tabs => {
+      if (!chrome.runtime.lastError && tabs[0]?.id != null) performAction(tabs[0].id, command);
+    });
+    return;
+  }
   commandTarget(command).then(tabId => tabId == null ? null : performAction(tabId,command)).catch(() => {});
 });
 

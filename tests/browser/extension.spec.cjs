@@ -3,7 +3,9 @@ const path=require('node:path');
 const test=base.extend({extension:async({},use)=>{
   const root=path.resolve(__dirname,'../..');
   const context=await chromium.launchPersistentContext('',{channel:'chromium',headless:true,viewport:{width:1280,height:960},
-    args:['--enable-unsafe-extension-debugging','--disable-extensions-except='+root,'--load-extension='+root]});
+    args:['--enable-unsafe-extension-debugging']});
+  const browserCDP=await context.browser().newBrowserCDPSession();
+  await browserCDP.send('Extensions.loadUnpacked',{path:root});
   const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
   await use({context,worker,id:worker.url().split('/')[2]});await context.close();
 }});
@@ -23,7 +25,9 @@ async function command(extension,tabId,action){return extension.worker.evaluate(
 
 for (const showButton of [false,true]) test(`toolbar opens and closes native PiP without a page gesture (page button ${showButton})`,async({extension})=>{
   await extension.worker.evaluate(value=>chrome.storage.sync.set({showButton:value,autoPip:false}),showButton);
-  const {page}=await player(extension);
+  const {page,tabId}=await player(extension);
+  await page.bringToFront();
+  await extension.worker.evaluate(id=>chrome.tabs.update(id,{active:true}),tabId);
   const cdp=await extension.context.newCDPSession(page);
   const browserCDP=await extension.context.browser().newBrowserCDPSession();
   const {targetInfos}=await browserCDP.send('Target.getTargets',{filter:[{type:'tab',exclude:false}]});
@@ -34,7 +38,11 @@ for (const showButton of [false,true]) test(`toolbar opens and closes native PiP
   // expire and use raw CDP reads so they cannot hide toolbar activation bugs.
   await expect.poll(()=>read('navigator.userActivation.isActive'),{timeout:8000}).toBe(false);
   await browserCDP.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
-  await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(true);
+  try { await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(true); }
+  catch (error) {
+    console.log('Toolbar result',await extension.worker.evaluate(async id=>({title:await chrome.action.getTitle({tabId:id}),active:(await chrome.tabs.query({active:true,currentWindow:true})).map(t=>({id:t.id,url:t.url}))}),tabId));
+    throw error;
+  }
   await browserCDP.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
   await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(false);
 });

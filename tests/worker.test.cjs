@@ -20,7 +20,7 @@ function worker({disabledHosts = [], results = []} = {}) {
       action:{onClicked:event('click'),setBadgeText:noop,setBadgeBackgroundColor:noop,setTitle:noop},
       commands:{onCommand:event('command')},
       runtime:{getManifest:()=>JSON.parse(fs.readFileSync(require.resolve('../manifest.json'))),onMessage:event('message'),onInstalled:event('install'),onStartup:event('startup'),openOptionsPage:noop},
-      tabs:{get:(_id,callback)=>reply({id:7,url:'https://top.example/watch'},callback),query:async()=>[{id:7}],onRemoved:event('remove'),onUpdated:event('update'),onActivated:event('activate')},
+      tabs:{get:(_id,callback)=>reply({id:7,url:'https://top.example/watch'},callback),query:(_query,callback)=>reply([{id:7}],callback),onRemoved:event('remove'),onUpdated:event('update'),onActivated:event('activate')},
       storage:{sync:{get:(defaults,callback)=>reply({...defaults,disabledHosts},callback)},local:{get:async d=>d,set:noop},session:{get:async()=>({}),set:noop},onChanged:{addListener(){}}},
       contextMenus:{onClicked:event('menu'),update:noop},
       scripting:{executeScript:(args,callback)=>{calls.push(args);gestures.push(callbackGesture);return reply(typeof results==='function'?results(args):results,callback);}}
@@ -93,4 +93,12 @@ test('frame inspection waits for controller initialization before reading enable
   w.context.__fpipController={ready:new Promise(resolve=>{finish=()=>{ready=true;resolve();};}),snapshot:()=>({enabled:ready})};
   const pending=vm.runInContext('inspectFrame()',w.context);
   finish();assert.equal((await pending).enabled,true);
+});
+
+
+test('native PiP shortcut retains the command gesture through tab selection',async()=>{
+  const w=worker({results:[{frameId:0,result:{host:'top.example',candidate:{playing:true,area:100,pixels:100}}}]});
+  w.listeners.command('toggle-pip');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.equal(w.calls.length,2);assert.deepEqual(w.gestures,[true,true]);
 });
