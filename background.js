@@ -21,12 +21,13 @@ async function injectedToggle(disabledHosts = [], tabHost = "", action = "toggle
   return controller.run(action);
 }
 const pendingActions = new Set();
-function callToggle(tabId, action = "toggle-pip") {
+function callToggle(tabId, action = "toggle-pip", knownTab = null) {
   if (pendingActions.has(tabId)) return Promise.resolve({status:"busy"});
   pendingActions.add(tabId);
-  // Chrome carries an extension click's user gesture into API callbacks.
-  // Keep the entire probe/action chain in those callbacks: an async continuation
-  // in a service worker can lose the gesture before requestPictureInPicture.
+  // Chrome forwards a worker gesture through ONE API callback, not an arbitrary
+  // chain. Start the policy/tab reads together in the original event, then probe
+  // from their callbacks. That injection activates the page before selecting
+  // one document and requesting PiP within its normal transient activation.
   return new Promise(resolve => {
     const finish = result => { pendingActions.delete(tabId); resolve(result); };
     const failed = () => {
@@ -43,11 +44,10 @@ function callToggle(tabId, action = "toggle-pip") {
       }); }
       catch (error) { console.warn("[Floating PiP] action:", error.message); finish({status:"unavailable"}); }
     };
-    chrome.tabs.get(tabId, tab => {
-      if (failed()) return;
-      chrome.storage.sync.get({disabledHosts:[]}, settings => {
-        if (failed()) return;
-        const disabledHosts = settings?.disabledHosts || [];
+    let tab = knownTab, settings = null;
+    const begin = () => {
+        if (!tab || !settings) return;
+        const disabledHosts = settings.disabledHosts || [];
         const tabHost = hostOf(tab.url);
         if (FloatingVideoCore.isDisabled(disabledHosts, [tabHost])) return finish({status:"disabled"});
         const probe = mayInstall => execute({target:{tabId,allFrames:true},func:inspectFrame}, results => {
@@ -69,8 +69,9 @@ function callToggle(tabId, action = "toggle-pip") {
           execute({target,func:injectedToggle,args:[disabledHosts,tabHost,action]}, replies => finish(replies[0]?.result || {status:"unavailable"}));
         });
         probe(true);
-      });
-    });
+    };
+    if (!tab) chrome.tabs.get(tabId, result => { if (!failed()) { tab = result; begin(); } });
+    chrome.storage.sync.get({disabledHosts:[]}, result => { if (!failed()) { settings = result; begin(); } });
   }).catch(error => {
     console.warn("[Floating PiP] action:", error.message);
     return {status:"unavailable"};
@@ -86,10 +87,10 @@ const STATUS_LABELS = {
   "embedded-layout":"In-page layouts require a top-page video. Use native PiP for embedded players.",
   reload:"Reload the page to enable Floating Video.", busy:"A video action is already running."
 };
-async function performAction(tabId, action = "toggle-pip") {
+async function performAction(tabId, action = "toggle-pip", tab = null) {
   if (action === 'open-mixer') return FloatingVideoMultiView.openMixer();
   if (action === 'popout-player') return FloatingVideoMultiView.popoutTab(tabId);
-  const result = await callToggle(tabId, action);
+  const result = await callToggle(tabId, action, tab);
   const message = result.status === "ok" ? "Floating Video — ready" : STATUS_LABELS[result.status] || "Video action unavailable";
   await chrome.action.setTitle({tabId,title:message});
   return result;
@@ -97,7 +98,7 @@ async function performAction(tabId, action = "toggle-pip") {
 
 // Toolbar icon click -> float / unfloat.
 chrome.action.onClicked.addListener((tab) => {
-  if (tab?.id != null) performAction(tab.id);
+  if (tab?.id != null) performAction(tab.id, "toggle-pip", tab);
 });
 
 // Browser shortcuts follow the native PiP owner for playback, even on another tab.
@@ -113,12 +114,13 @@ async function commandTarget(command) {
   }
   return (await chrome.tabs.query({active:true,currentWindow:true}))[0]?.id;
 }
-chrome.commands.onCommand.addListener(command => {
+chrome.commands.onCommand.addListener((command, tab) => {
   if (!chrome.runtime.getManifest().commands[command]) return;
   if (!PLAYBACK_COMMANDS.has(command)) {
     // In particular, Alt+P must retain the command's gesture just like a click.
+    if (tab?.id != null) { performAction(tab.id, command, tab); return; }
     chrome.tabs.query({active:true,currentWindow:true}, tabs => {
-      if (!chrome.runtime.lastError && tabs[0]?.id != null) performAction(tabs[0].id, command);
+      if (!chrome.runtime.lastError && tabs[0]?.id != null) performAction(tabs[0].id, command, tabs[0]);
     });
     return;
   }

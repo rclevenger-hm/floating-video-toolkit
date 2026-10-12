@@ -3,6 +3,7 @@ const path=require('node:path');
 const test=base.extend({extension:async({},use)=>{
   const root=path.resolve(__dirname,'../..');
   const context=await chromium.launchPersistentContext('',{channel:'chromium',headless:true,viewport:{width:1280,height:960},
+    ignoreDefaultArgs:['--disable-extensions'],
     args:['--enable-unsafe-extension-debugging']});
   const browserCDP=await context.browser().newBrowserCDPSession();
   await browserCDP.send('Extensions.loadUnpacked',{path:root});

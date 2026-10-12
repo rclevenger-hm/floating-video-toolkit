@@ -9,10 +9,11 @@ function worker({disabledHosts = [], results = []} = {}) {
   const listeners = {};
   const event = key => ({addListener:fn => {listeners[key] = fn;}});
   const noop = () => Promise.resolve();
-  let callbackGesture=false;
+  let callbackGesture=false, inCallback=false;
   const gestures=[];
   const reply=(value,callback)=>{
-    if(callback) queueMicrotask(()=>{callbackGesture=true;try {callback(value);} finally {callbackGesture=false;}});
+    const canForward=!inCallback;
+    if(callback) queueMicrotask(()=>{inCallback=true;callbackGesture=canForward;try {callback(value);} finally {callbackGesture=false;inCallback=false;}});
     return Promise.resolve(value);
   };
   const context = vm.createContext({URL, console, setTimeout, clearTimeout, importScripts(){}, FloatingVideoCore:core,
@@ -50,7 +51,7 @@ test('multi-frame activation probes once and only executes in the selected docum
   assert.equal(w.calls[0].target.allFrames,true);
   assert.deepEqual(Array.from(w.calls[1].target.documentIds),['child']);
   assert.equal(w.calls[1].target.allFrames,undefined);
-  assert.deepEqual(w.gestures,[true,true]);
+  assert.deepEqual(w.gestures,[true,false]);
 });
 test('simultaneous requests collapse to one frame action', async()=>{
   const w=worker({results:[{frameId:0,result:{host:'top.example',candidate:{playing:true,area:100,pixels:100}}}]});
@@ -77,7 +78,7 @@ test('toolbar initializes missing documents and re-probes before opening PiP',as
   assert.equal(probes,2);assert.equal(w.calls.length,4);
   assert.ok(w.calls[1].files.includes('content.js'));
   assert.deepEqual(Array.from(w.calls[1].target.documentIds),['top']);
-  assert.deepEqual(w.gestures,[true,true,true,true]);
+  assert.deepEqual(w.gestures,[true,false,false,false]);
 });
 test('a failed injection releases the toolbar lock and reports the failure',async()=>{
   const w=worker();
@@ -98,7 +99,7 @@ test('frame inspection waits for controller initialization before reading enable
 
 test('native PiP shortcut retains the command gesture through tab selection',async()=>{
   const w=worker({results:[{frameId:0,result:{host:'top.example',candidate:{playing:true,area:100,pixels:100}}}]});
-  w.listeners.command('toggle-pip');
+  w.listeners.command('toggle-pip',{id:7,url:'https://top.example/watch'});
   await new Promise(resolve=>setImmediate(resolve));
-  assert.equal(w.calls.length,2);assert.deepEqual(w.gestures,[true,true]);
+  assert.equal(w.calls.length,2);assert.deepEqual(w.gestures,[true,false]);
 });
