@@ -110,7 +110,12 @@
     if (!target) return {status:'no-video'};
     const result = await popout(target);
     // The requested player stays in front; its companion mixer must not cover it.
-    if (result.status === 'ok') await openMixer({focus:false});
+    if (result.status === 'ok') {
+      await openMixer({focus:false});
+      // Creating the companion window can still change Chrome's active window.
+      // Raise the requested player last, once the mixer creation has completed.
+      await focusTab(await chrome.tabs.get(tabId));
+    }
     return result;
   }
   async function restore(tabId) {

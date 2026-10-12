@@ -48,7 +48,10 @@ test('a mixer popout opens in front and requesting it again restores a minimized
   assert.equal(w.calls.filter(c=>c[0]==='create').length,1);
 });
 test('popout command keeps the player in front with a new or existing mixer',async()=>{
-  const w=worker();await w.api.popoutTab(1);
+  const w=worker(),create=w.chrome.windows.create;
+  // Some window managers activate a new companion window despite focused:false.
+  w.chrome.windows.create=async info=>{const win=await create(info);if(info.url)await w.chrome.windows.update(win.id,{focused:true});return win;};
+  await w.api.popoutTab(1);
   assert.equal(foreground(w),w.tabs.get(1).windowId);
   const mixer=[...w.tabs.values()].find(t=>t.url===w.chrome.runtime.getURL('mixer.html'));
   assert.ok(mixer);

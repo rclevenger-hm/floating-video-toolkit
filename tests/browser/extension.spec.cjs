@@ -215,12 +215,12 @@ test('popout command keeps the player focused when creating or reusing the mixer
       if (attempt>0) await FloatingVideoMultiView.openMixer();
       const result=await performAction(id,'popout-player');
       const tab=await chrome.tabs.get(id);
-      return {status:result.status,player:tab.windowId,focused:(await chrome.windows.getLastFocused()).id};
+      return {status:result.status,player:tab.windowId};
     },{id:tabId,attempt});
-    expect(state.status).toBe('ok');expect(state.focused).toBe(state.player);
+    expect(state.status).toBe('ok');
     // Window creation resolves before its tab finishes navigating to mixer.html.
     await expect.poll(()=>extension.context.pages().filter(p=>p.url()===`chrome-extension://${extension.id}/mixer.html`).length).toBe(1);
-    expect(await extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id)).toBe(state.player);
+    await expect.poll(()=>extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id),{message:`attempt ${attempt}`}).toBe(state.player);
   }
   expect(await page.locator('#main').getAttribute('data-identity')).toBe('original');
 });
