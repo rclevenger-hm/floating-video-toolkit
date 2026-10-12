@@ -2,14 +2,18 @@
 
 [![Validate and package](https://github.com/rclevenger-hm/floating-video-toolkit/actions/workflows/ci.yml/badge.svg)](https://github.com/rclevenger-hm/floating-video-toolkit/actions/workflows/ci.yml)
 
-A Chromium extension for multiple player windows, audio balancing, manual stream delay, ultrawide viewing, and keyboard playback controls. No account, backend, bundler, or runtime dependencies.
+A Chromium extension for single-window native Picture-in-Picture, ordinary browser pop-out windows, audio balancing, manual stream delay, ultrawide viewing, and keyboard playback controls. No account, backend, bundler, or runtime dependencies.
+
+> **Chrome limitation: multiple native PiP windows are not supported.** Chrome allows one native PiP video at a time across tabs. Opening PiP for another video replaces the current one. This extension does not remove that limit. **Multi-view** opens ordinary browser windows; they do not stay above other applications.
+>
+> See [Chrome’s explanation of its one-window PiP behavior](https://developer.chrome.com/blog/watch-video-using-picture-in-picture).
 
 ## Choose how you watch
 
 | Mode | What it does | Where it works |
 | --- | --- | --- |
 | Multi-view pop-outs | Opens each service tab in its own resizable window, with a shared audio mixer | Multiple HTTP(S) tabs; retains original players; not always on top |
-| Native Picture-in-Picture | Floats the selected video above other applications | Compatible top-page and embedded videos; browser permissions apply |
+| Native Picture-in-Picture | Floats one selected video above other applications | One native PiP window in Chrome across tabs; compatible top-page and embedded videos |
 | Mini-player | Places the video in one of four page corners, with playback controls | Inside the current tab, for top-page videos |
 | Cinema view | Creates a large in-page player with ultrawide fit and crop controls | Inside the current tab, for top-page videos |
 
@@ -27,7 +31,9 @@ You can also clone this repository and load its root directory directly. Chrome 
 
 After an update, reload the extension on `chrome://extensions`. The toolbar initializes already-open video tabs when needed; reload the video page if a site still has stale controls.
 
-## Multiple games, services, and audio
+## Multiple streams in ordinary browser windows
+
+Use **Multi-view & audio mixer** to arrange several service windows and balance their audio. These steps create browser pop-outs; they do not create multiple native PiP windows.
 
 1. Start each stream in its own tab (for example, RedZone and the Chargers broadcast).
 2. Right-click the extension icon → **Multi-view & audio mixer → Open multi-view & audio mixer**.
@@ -36,7 +42,7 @@ After an update, reload the extension on `chrome://extensions`. The toolbar init
 5. Optionally choose **Video view** for a top-page video to use the existing cinema layout. Click again to restore the site's layout if it needs its original controls. Embedded players keep their service layout.
 6. Use **Return to tab** when finished. **The pop-out's X closes the source tab and stops that stream.**
 
-Pop-outs are ordinary browser windows, **not always on top**. The native PiP APIs let browsers restrict simultaneous windows; this feature does not lift those restrictions. Keep using native PiP for a single always-on-top video. Service account limits and DRM policies still apply. Netflix, Hulu and sports-provider compatibility must be checked with your actual subscriptions; fixture tests do not certify those providers.
+Pop-outs can be covered by other applications. Use native PiP when you need one always-on-top video. You cannot keep separate Netflix, Hulu, or sports streams in multiple native PiP windows with this extension in Chrome. Service account limits and DRM policies still apply. Netflix, Hulu and sports-provider compatibility must be checked with your actual subscriptions; fixture tests do not certify those providers.
 
 The mixer does not unmute automatically when you raise a muted player's volume. Site-level/tab-level mute and OS volume also apply. Refresh players after opening streams or changing channels; stale controls fail safely. Automatic PiP, ad comfort, and smart speed are suspended while a tab is popped out, then restored from your settings when it returns.
 
@@ -49,7 +55,7 @@ Open **Sync / stream delay** on the **faster feed**. If CBS is 40 seconds behind
 - A hold **does not record the feed or create a DVR buffer**. A service may discard old content, force a return to live, reject seeks, or block automatic resume. Try its own DVR controls if that happens. If the service does not retain paused content, this extension cannot guarantee a delay.
 - Different broadcasts do not expose a common event clock. Alignment is manual and may need adjustment after ads or buffering. Disable speed-changing features for streams kept in ordinary tabs while syncing.
 
-Implementation references: [Chrome window API](https://developer.chrome.com/docs/extensions/reference/api/windows), [Document PiP limits](https://wicg.github.io/document-picture-in-picture/), and [source-player seekable ranges](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/seekable).
+Implementation references: [Chrome window API](https://developer.chrome.com/docs/extensions/reference/api/windows), [Chrome native PiP behavior](https://developer.chrome.com/blog/watch-video-using-picture-in-picture), and [source-player seekable ranges](https://developer.mozilla.org/en-US/docs/Web/API/HTMLMediaElement/seekable).
 
 ## Playback and shortcuts
 
@@ -138,6 +144,7 @@ CI tests Node.js 22 and 24, runs the extension in Chromium against local video f
 
 | Symptom | What to check |
 | --- | --- |
+| Opening a second PiP replaces the first | This is Chrome’s single native PiP window limit across tabs. Use **Multi-view & audio mixer → Pop out** for several ordinary browser windows; they are not always on top. |
 | Nothing happens | Start playback, reload the page after installing, confirm site access, and inspect the toolbar tooltip for the last action result. |
 | Wrong video is controlled | Click the intended video before using the toolbar or shortcut. Hidden and unloaded videos are excluded from selection. |
 | A shortcut does not work | Open Chrome's shortcut settings; a browser/OS/extension conflict may prevent assignment. |
