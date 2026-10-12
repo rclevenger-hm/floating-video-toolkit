@@ -3,7 +3,10 @@ const path=require('node:path');
 const test=base.extend({extension:async({},use)=>{
   const root=path.resolve(__dirname,'../..');
   const context=await chromium.launchPersistentContext('',{channel:'chromium',headless:true,viewport:{width:1280,height:960},
-    args:['--disable-extensions-except='+root,'--load-extension='+root]});
+    ignoreDefaultArgs:['--disable-extensions'],
+    args:['--enable-unsafe-extension-debugging']});
+  const browserCDP=await context.browser().newBrowserCDPSession();
+  await browserCDP.send('Extensions.loadUnpacked',{path:root});
   const worker=context.serviceWorkers()[0]||await context.waitForEvent('serviceworker');
   await use({context,worker,id:worker.url().split('/')[2]});await context.close();
 }});
@@ -20,6 +23,30 @@ async function player(extension){
   return {page,tabId};
 }
 async function command(extension,tabId,action){return extension.worker.evaluate(async({tabId,action})=>callToggle(tabId,action),{tabId,action});}
+
+for (const showButton of [false,true]) test(`toolbar opens and closes native PiP without a page gesture (page button ${showButton})`,async({extension})=>{
+  await extension.worker.evaluate(value=>chrome.storage.sync.set({showButton:value,autoPip:false}),showButton);
+  const {page,tabId}=await player(extension);
+  await page.bringToFront();
+  await extension.worker.evaluate(id=>chrome.tabs.update(id,{active:true}),tabId);
+  const cdp=await extension.context.newCDPSession(page);
+  const browserCDP=await extension.context.browser().newBrowserCDPSession();
+  const {targetInfos}=await browserCDP.send('Target.getTargets',{filter:[{type:'tab',exclude:false}]});
+  const targetInfo=targetInfos.find(target=>target.url===page.url());
+  expect(targetInfo).toBeTruthy();
+  const read=async expression=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true,userGesture:false})).result.value;
+  // Playwright evaluate() supplies a gesture by default. Let setup gestures
+  // expire and use raw CDP reads so they cannot hide toolbar activation bugs.
+  await expect.poll(()=>read('navigator.userActivation.isActive'),{timeout:8000}).toBe(false);
+  await browserCDP.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
+  try { await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(true); }
+  catch (error) {
+    console.log('Toolbar result',await extension.worker.evaluate(async id=>({title:await chrome.action.getTitle({tabId:id}),active:(await chrome.tabs.query({active:true,currentWindow:true})).map(t=>({id:t.id,url:t.url}))}),tabId));
+    throw error;
+  }
+  await browserCDP.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
+  await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(false);
+});
 
 test('settings persist crop and exclusions; all shortcuts are visible',async({extension},testInfo)=>{
   const page=await extension.context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
@@ -100,6 +127,34 @@ test('page-button native PiP follows playback shortcuts across tabs',async({exte
   await expect.poll(()=>page.evaluate(()=>Boolean(document.pictureInPictureElement))).toBe(false);
 });
 
+test('page buttons follow visible players, including cross-origin embeds, without leaking onto empty pages',async({extension})=>{
+  await extension.worker.evaluate(()=>chrome.storage.sync.set({showButton:true,autoPip:false}));
+  const {page}=await player(extension);
+  const button=page.locator('#fpip-button');
+  const child=page.frameLocator('iframe');
+  await expect(button).toHaveCount(1);
+  await expect(child.locator('#fpip-button')).toHaveCount(1);
+  const box=await button.boundingBox(),videoBox=await page.locator('#main').boundingBox();
+  expect(box.x).toBeGreaterThan(videoBox.x);expect(box.x+box.width).toBeLessThanOrEqual(videoBox.x+videoBox.width);
+  expect(box.y).toBeGreaterThanOrEqual(videoBox.y);
+  await page.locator('#main').evaluate(video=>video.style.opacity='0');
+  await expect(button).toHaveCount(0);
+  await page.locator('iframe').evaluate(frame=>frame.style.display='none');
+  await expect(child.locator('#fpip-button')).toHaveCount(0);
+  await page.locator('iframe').evaluate(frame=>frame.style.display='');
+  await expect(child.locator('#fpip-button')).toHaveCount(1);
+  await child.locator('#fpip-button').click();
+  await expect.poll(()=>child.locator('video').evaluate(v=>v===document.pictureInPictureElement)).toBe(true);
+  await child.locator('#fpip-button').click();
+  await page.locator('iframe').evaluate(frame=>frame.remove());
+  await page.locator('#main').evaluate(video=>{video.style.opacity='1';video.style.marginTop='1800px';});
+  await expect(button).toHaveCount(0);
+  await page.locator('#main').scrollIntoViewIfNeeded();await expect(button).toHaveCount(1);
+  await page.locator('#main').evaluate(video=>video.remove());await expect(button).toHaveCount(0);
+  await page.evaluate(()=>document.body.innerHTML='<h1>Job search</h1><p>No video here</p>');
+  await expect(button).toHaveCount(0);
+});
+
 test('multi-view keeps two source tabs alive with independent mixer controls and returns them safely',async({extension},testInfo)=>{
   const {page:first,tabId:firstId}=await player(extension);
   const second=await extension.context.newPage();await second.goto(playerURL+'?second');
@@ -173,4 +228,24 @@ test('stale mixer documents cannot control a navigated source and source pages c
   const result=await extension.worker.evaluate(async target=>FloatingVideoMultiView.control(target,'pause'),target);
   expect(result.status).not.toBe('ok');
   await expect.poll(()=>page.locator('#main').evaluate(v=>v.paused)).toBe(false);
+});
+
+test('toolbar recovers an existing video tab after reinstall without reloading its player',async({extension})=>{
+  const {page}=await player(extension);
+  await page.locator('#main').evaluate(v=>v.dataset.session='keep-playing');
+  const browserCDP=await extension.context.browser().newBrowserCDPSession();
+  const cdp=await extension.context.newCDPSession(page);
+  const {targetInfos}=await browserCDP.send('Target.getTargets',{filter:[{type:'tab',exclude:false}]});
+  const target=targetInfos.find(t=>t.url===page.url());
+  await browserCDP.send('Extensions.uninstall',{id:extension.id});
+  const loaded=extension.context.waitForEvent('serviceworker');
+  const {id}=await browserCDP.send('Extensions.loadUnpacked',{path:path.resolve(__dirname,'../..')});
+  const worker=await loaded;
+  await worker.evaluate(()=>chrome.storage.sync.set({autoPip:false,showButton:true}));
+  const read=async expression=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true,userGesture:false})).result.value;
+  await expect.poll(()=>read('navigator.userActivation.isActive'),{timeout:8000}).toBe(false);
+  await browserCDP.send('Extensions.triggerAction',{id,targetId:target.targetId});
+  await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(true);
+  expect(await read('document.querySelector("#main").dataset.session')).toBe('keep-playing');
+  await expect(page.locator('#fpip-button')).toHaveCount(1);
 });

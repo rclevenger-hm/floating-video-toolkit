@@ -6,11 +6,12 @@ Run `npm ci`, `npm run check`, and `npm test`. The Node/DOM tests cover exclusio
 
 Browser tests use `@playwright/test` and a disposable Chromium profile loaded with the extension. Run `npx playwright install --with-deps chromium`, then `npm run test:browser`. The fixture server is started automatically; manual inspection is available with `node scripts/fixture-server.cjs` at `http://127.0.0.1:43123/player.html`. The included short WebM is generated test footage with no external media dependency.
 
-The browser checks exercise the real extension worker, settings storage, cross-origin frame policy, command selection, four corner positions, ultrawide player geometry, cleanup, and small-screen settings layout. Multi-view browser cases cover two simultaneous source-tab pop-outs, independent audio/playback controls, restoration without replacing the video, seek requests, hold resume after closing the mixer, and stale navigation rejection. Screenshots are included in the `browser-results` CI artifact. They do not claim streaming-provider compatibility.
+The browser checks exercise the real extension worker, settings storage, cross-origin frame policy, command selection, four corner positions, ultrawide player geometry, cleanup, and small-screen settings layout. Multi-view browser cases cover two simultaneous source-tab pop-outs, independent audio/playback controls, restoration without replacing the video, seek requests, hold resume after closing the mixer, and stale navigation rejection. Native PiP tests trigger the actual extension toolbar action through browser-level DevTools, after page activation expires, with the page button on and off. Additional cases cover hidden/offscreen/removed video, cross-origin page buttons, and recovery after reinstall without reloading the source tab. Screenshots are included in the `browser-results` CI artifact. They do not claim streaming-provider compatibility.
 
 ## Manual checks before wider distribution
 
 - Install the extracted package in Chrome and reload open video pages.
+- Enable the page button, visit a text-only page, then hide/scroll away from a video and confirm no stray button remains.
 - Start a video, toggle native PiP using both toolbar and the assigned shortcut, and close it again.
 - Reassign the native PiP shortcut and verify the previous binding no longer triggers the extension.
 - Float a video, change tabs, and use play/pause and explicit mute/unmute shortcuts.

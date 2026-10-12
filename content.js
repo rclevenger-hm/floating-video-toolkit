@@ -92,7 +92,7 @@
     if (!enabled) return {status:"disabled"};
     if (action === "toggle-pip") {
       layout?.close();
-      return {status:await togglePip() ? "ok" : "unavailable"};
+      return {status:await togglePip() ? "ok" : pipFailure};
     }
     const video = document.pictureInPictureElement || getActiveVideo();
     if (!video) return {status:"no-video"};
@@ -187,6 +187,7 @@
     layout?.close();
     adjustedStyles.restoreAll();
     restoreFlags();
+    stopButtonWatch();
     btn?.remove();
     btn = null;
     for (const id of ["fpip-style", "fpip-sharpen-svg", "fpip-cosmetic", "fpip-ad-style"]) document.getElementById(id)?.remove();
@@ -296,6 +297,7 @@
     });
     applyAdjust(active);
     layout?.render();
+    ensureButton();
   }
 
   // ---- keep the flag clear: ads/players love to re-set it ----
@@ -319,6 +321,7 @@
           });
         }
       }
+      scheduleButton();
     });
     observer.observe(document.documentElement, {
       subtree: true,
@@ -344,8 +347,10 @@
   // Lock only while the request is in flight; a completed open must allow
   // an immediate deliberate close. The worker also serializes tab actions.
   let busy = false;
+  let pipFailure = "unavailable";
   async function togglePip() {
-    if (!enabled || busy) return false;
+    if (!enabled || busy) { pipFailure = busy ? "busy" : "disabled"; return false; }
+    pipFailure = "unavailable";
     busy = true;
     try {
       if (document.pictureInPictureElement) {
@@ -355,7 +360,7 @@
         return true;
       }
       const video = getActiveVideo();
-      if (!video) return false; // no video in THIS frame
+      if (!video) { pipFailure = "no-video"; return false; }
       return await enterPip(video);
     } catch (err) {
       console.warn("[Floating PiP] request failed:", err && err.message);
@@ -369,12 +374,17 @@
   async function enterPip(video) {
     if (!enabled || !video) return false;
     stripFlag(video);
+    if (typeof video.requestPictureInPicture !== "function") { pipFailure = "pip-unsupported"; return false; }
+    if (document.pictureInPictureEnabled === false) { pipFailure = "pip-blocked"; return false; }
     try {
       await video.requestPictureInPicture();
       userWantsPip = true;
       stopPulse();
       return true;
-    } catch (_) {
+    } catch (error) {
+      pipFailure = error.name === "NotAllowedError" ? "needs-gesture" :
+        error.name === "SecurityError" ? "pip-blocked" :
+        error.name === "NotSupportedError" ? "pip-unsupported" : "unavailable";
       // Expected when called without a gesture / no PiP to swap from. Stay quiet
       // (the caller pulses the button instead of retrying).
       return false;
@@ -392,7 +402,7 @@
 
   // ---- pulse the floating button when we need a click to resume ----
   function startPulse() {
-    if (window.self !== window.top || !btn || pulsing) return;
+    if (!btn || pulsing) return;
     pulsing = true;
     btn.style.opacity = "1";
     btn.style.animation = "fpip-pulse 1s ease-in-out infinite";
@@ -433,63 +443,82 @@
     true
   );
 
-  // ---- floating button (guaranteed user gesture) ----
+  // ---- a local control, anchored only to a visible player ----
+  // Each frame owns its button. Hidden/offscreen iframes cannot leave a stray
+  // control in the top page; the click also retains its native user activation.
   let btn = null;
+  let buttonVideo = null;
+  let buttonFrame = null;
+  let buttonObserver = null;
+  const buttonVisibility = new Map();
+  function scheduleButton() {
+    if (!enabled || !showButton || buttonFrame !== null) return;
+    buttonFrame = requestAnimationFrame(() => { buttonFrame = null; ensureButton(); });
+  }
+  function stopButtonWatch() {
+    buttonObserver?.disconnect(); buttonObserver = null;
+    buttonVisibility.clear(); buttonVideo = null;
+    if (buttonFrame !== null) cancelAnimationFrame(buttonFrame);
+    buttonFrame = null;
+  }
   function ensureButton() {
-    if (window.self !== window.top) return; // only top frame
     if (!enabled || !showButton) {
-      btn?.remove();
-      btn = null;
+      stopButtonWatch(); btn?.remove(); btn = null;
       return;
     }
-    if (btn) return;
-    if (!document.getElementById("fpip-style")) {
-      const st = document.createElement("style");
-      st.id = "fpip-style";
-      st.textContent =
-        "@keyframes fpip-pulse{0%,100%{box-shadow:0 0 0 0 rgba(45,108,223,.7)}50%{box-shadow:0 0 0 9px rgba(45,108,223,0)}}";
-      document.documentElement.appendChild(st);
+    const videos = Array.from(document.querySelectorAll("video"));
+    if (typeof IntersectionObserver !== "undefined") {
+      if (!buttonObserver) buttonObserver = new IntersectionObserver(entries => {
+        for (const entry of entries) buttonVisibility.set(entry.target,
+          entry.isIntersecting && entry.intersectionRect.width > 0 && entry.intersectionRect.height > 0);
+        scheduleButton();
+      });
+      for (const video of videos) if (!buttonVisibility.has(video)) {
+        buttonVisibility.set(video, false); buttonObserver.observe(video);
+      }
+      for (const video of buttonVisibility.keys()) if (!video.isConnected) {
+        buttonObserver.unobserve(video); buttonVisibility.delete(video);
+      }
     }
-    btn = document.createElement("button");
-    btn.textContent = "⧉ PiP";
-    btn.setAttribute("aria-label","Toggle floating video");
-    btn.addEventListener("focus",()=>{btn.style.opacity="1";});
-    Object.assign(btn.style, {
-      position: "fixed",
-      top: "16px",
-      right: "16px",
-      zIndex: "2147483647",
-      padding: "6px 10px",
-      font: "600 13px system-ui, sans-serif",
-      color: "#fff",
-      background: "rgba(0,0,0,0.65)",
-      border: "1px solid rgba(255,255,255,0.35)",
-      borderRadius: "8px",
-      cursor: "pointer",
-      opacity: "0",
-      transition: "opacity .2s",
-      userSelect: "none",
-    });
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      // Use the same single-owner route as toolbar and browser commands.
-      chrome.runtime.sendMessage({type: "FAN_OUT_PIP"}).catch(() => {});
-    });
-    hookButtonFade();
-    document.documentElement.appendChild(btn);
+    buttonVideo = core.pickVideo(videos.filter(video => core.visibleRect(video) &&
+      (!buttonObserver || buttonVisibility.get(video))), selectedVideo, selectedAt);
+    if (!buttonVideo) { stopPulse(); btn?.remove(); btn = null; return; }
+    const rect = core.visibleRect(buttonVideo);
+    if (btn && !btn.isConnected) btn = null;
+    if (!btn) {
+      if (!document.getElementById("fpip-style")) {
+        const st = document.createElement("style"); st.id = "fpip-style";
+        st.textContent = "@keyframes fpip-pulse{0%,100%{box-shadow:0 0 0 0 rgba(45,108,223,.7)}50%{box-shadow:0 0 0 9px rgba(45,108,223,0)}}";
+        document.documentElement.appendChild(st);
+      }
+      btn = document.createElement("button");
+      btn.id = "fpip-button"; btn.type = "button";
+      btn.textContent = "⧉ PiP";
+      btn.setAttribute("aria-label", "Toggle floating video");
+      Object.assign(btn.style, {
+        position:"fixed", zIndex:"2147483647", padding:"6px 10px",
+        font:"600 13px system-ui, sans-serif", color:"#fff", background:"rgba(0,0,0,0.75)",
+        border:"1px solid rgba(255,255,255,0.35)", borderRadius:"8px", cursor:"pointer", userSelect:"none"
+      });
+      btn.addEventListener("click", event => {
+        event.stopPropagation(); event.preventDefault();
+        const video = buttonVideo;
+        if (!video || !core.visibleRect(video)) { ensureButton(); return; }
+        selectedVideo = video; selectedAt = Date.now();
+        // Call before any message/storage round trip; this is a real page click.
+        runAction("toggle-pip").then(result => {
+          if (btn) btn.title = result.status === "ok" ? "Toggle floating video" :
+            "Unable to open PiP. Try the extension toolbar and check its tooltip.";
+        });
+      });
+      document.documentElement.appendChild(btn);
+    }
+    btn.style.top = (rect.top + 6) + "px";
+    btn.style.left = Math.max(rect.left + 6, rect.right - 76) + "px";
   }
-  // Registered once -- ensureButton can run many times as the toggle flips, and
-  // re-adding this listener on each call would stack duplicates (leak).
-  let fadeHooked = false;
-  function hookButtonFade() {
-    if (fadeHooked) return;
-    fadeHooked = true;
-    document.addEventListener("mousemove", (e) => {
-      if (!btn || pulsing || document.activeElement === btn) return;
-      btn.style.opacity = e.clientY < 120 ? "1" : "0";
-    });
-  }
+  document.addEventListener("scroll", scheduleButton, true);
+  window.addEventListener("resize", scheduleButton);
+  for (const event of ["loadeddata", "emptied", "playing", "pause"]) document.addEventListener(event, scheduleButton, true);
 
   // Browser commands are the single source of truth for extension shortcuts.
   // No hardcoded Alt+P listener: remapping in Chrome must remove the old binding.
@@ -1617,7 +1646,7 @@
     videoAdjust:ADJ_DEFAULTS,viewSettings:core.VIEW_DEFAULTS,smartSpeed:false,
     smartSpeedRates:{talk:1.25,quiet:1.5},ssExtraHosts:[],ccPip:false,hidePaidOverlay:true
   };
-  (async () => {
+  globalThis.__fpipController.ready = (async () => {
     const policy=await chrome.runtime.sendMessage({type:"GET_TAB_HOST"});
     tabHost=policy?.host || "";
     multiView=policy?.multiView === true;

@@ -27,10 +27,27 @@
   function describeVideo(video, selectedAt = 0) {
     if (!video.isConnected || video.readyState < 2 || !video.videoWidth || !video.videoHeight) return null;
     const rect = video.getBoundingClientRect();
-    const style = video.ownerDocument.defaultView.getComputedStyle(video);
-    if (!rect.width || !rect.height || style.display === "none" || style.visibility === "hidden" || Number(style.opacity) === 0) return null;
+    if (!rect.width || !rect.height || !isDisplayed(video)) return null;
     return { selectedAt, playing: !video.paused && !video.ended,
       area: rect.width * rect.height, pixels: video.videoWidth * video.videoHeight };
+  }
+  function isDisplayed(element) {
+    const view = element.ownerDocument.defaultView;
+    for (let node = element; node; node = node.parentElement) {
+      const style = view.getComputedStyle(node);
+      if (node.hidden || style.display === "none" || style.visibility === "hidden" ||
+          style.visibility === "collapse" || style.contentVisibility === "hidden" ||
+          (style.opacity !== "" && Number(style.opacity) === 0)) return false;
+    }
+    return true;
+  }
+  function visibleRect(video) {
+    if (!describeVideo(video)) return null;
+    const view = video.ownerDocument.defaultView, rect = video.getBoundingClientRect();
+    const left = Math.max(0, rect.left), top = Math.max(0, rect.top);
+    const right = Math.min(view.innerWidth, rect.right), bottom = Math.min(view.innerHeight, rect.bottom);
+    // Keep the control out of slivers at the viewport edge and tracking pixels.
+    return right - left >= 80 && bottom - top >= 45 ? {left, top, right, bottom} : null;
   }
   function pickVideo(videos, selectedVideo, selectedAt = 0) {
     return Array.from(videos).map(video => ({video, info: describeVideo(video, video === selectedVideo ? selectedAt : 0)}))
@@ -64,7 +81,7 @@
     const pair = String(value).split(":").map(Number);
     return pair.length === 2 && pair[0] > 0 && pair[1] > 0 ? pair[0]/pair[1] : fallback || 16/9;
   }
-  const api = {VIEW_DEFAULTS, normalizeAdjust, normalizeView, aspectRatio, clamp, hostOf, normalizeHost, isDisabled, compareCandidates, describeVideo, pickVideo, chooseFrame};
+  const api = {VIEW_DEFAULTS, normalizeAdjust, normalizeView, aspectRatio, clamp, hostOf, normalizeHost, isDisabled, compareCandidates, describeVideo, visibleRect, pickVideo, chooseFrame};
   root.FloatingVideoCore = api;
   if (typeof module !== "undefined") module.exports = api;
 })(globalThis);

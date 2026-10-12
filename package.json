@@ -1,6 +1,6 @@
 {
   "name": "floating-video-toolkit",
-  "version": "1.22.0",
+  "version": "1.22.1",
   "private": true,
   "description": "Floating video controls for Chromium browsers",
   "scripts": {
@@ -13,7 +13,7 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "@playwright/test": "1.56.1",
+    "@playwright/test": "1.59.1",
     "jsdom": "26.1.0"
   }
 }

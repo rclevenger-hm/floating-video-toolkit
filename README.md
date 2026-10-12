@@ -25,7 +25,7 @@ The toolbar probes accessible frames and controls **one selected video in a tab*
 
 You can also clone this repository and load its root directory directly. Chrome is the automated test target. Other Chromium browsers need their own compatibility checks; Firefox and Safari ports are not included.
 
-After an update, reload the extension on `chrome://extensions`, then reload video tabs so old content scripts are replaced.
+After an update, reload the extension on `chrome://extensions`. The toolbar initializes already-open video tabs when needed; reload the video page if a site still has stale controls.
 
 ## Multiple games, services, and audio
 
@@ -93,6 +93,7 @@ Some players rely on the video's DOM position. In-page modes move the same video
 Right-click the toolbar → **Status & learned data…** to open settings.
 
 - Native PiP, optional automatic tab-switch PiP, page-button visibility, and picture controls are separate from experimental features.
+- The optional page button appears beside a visible, loaded video (including inside embedded players). It disappears on pages without video and when the player is hidden or scrolled out of view. Enabling it does not replace the toolbar action.
 - Add an exact hostname or paste a URL in **Site controls**. Only the normalized hostname is stored; subdomains are separate entries.
 - Disabling a site stops watchers, cancels caption fetching, returns the in-page player, removes overlays, restores original video flags and styles, and releases playback-rate control.
 - An already open native PiP window stays open until you close it; disabling stops extension control.
@@ -131,7 +132,7 @@ npm run package
 
 The package is written to `dist/floating-video-toolkit-VERSION.zip` with a SHA-256 checksum. It contains only extension assets, this README, and privacy documentation. Tests, fixtures, dependency folders, and development scripts are excluded.
 
-CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.22.0.md).
+CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.22.1.md).
 
 ## Troubleshooting
 
