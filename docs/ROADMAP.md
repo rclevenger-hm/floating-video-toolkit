@@ -14,11 +14,17 @@
 
 ## Implemented in 1.22.0
 
-- Concurrent existing-tab pop-out windows with safe return destinations.
+- Concurrent existing-tab browser pop-out windows with safe return destinations. These are ordinary windows without always-on-top behavior, not multiple native PiP windows.
 - Shared per-player volume, mute and playback mixer.
 - Manual DVR rewind and one-second nudges within available source ranges.
 - Source-page timed holds with cancellation, stale-source protection and resume feedback.
 - Per-pop-out suspension of automatic PiP, smart speed and ad comfort.
+
+## Unsupported in Chrome
+
+Multiple independent, always-on-top native PiP windows are not implemented. Chrome currently allows one native PiP video across tabs; requesting another replaces the current one. The multi-view pop-out feature does not fulfill multi-PiP support.
+
+A future Document PiP experiment would target richer content inside a PiP window. It is not a commitment to multiple simultaneous PiP windows or a workaround for Chrome’s window limit. Firefox and Safari ports are not included.
 
 ## Next
 
