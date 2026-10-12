@@ -1,8 +1,8 @@
 const {test:base,expect,chromium}=require('@playwright/test');
 const path=require('node:path');
-const test=base.extend({extension:async({},use)=>{
+const test=base.extend({extension:async({headless},use)=>{
   const root=path.resolve(__dirname,'../..');
-  const context=await chromium.launchPersistentContext('',{channel:'chromium',headless:true,viewport:{width:1280,height:960},
+  const context=await chromium.launchPersistentContext('',{channel:'chromium',headless,viewport:{width:1280,height:960},
     ignoreDefaultArgs:['--disable-extensions'],
     args:['--enable-unsafe-extension-debugging']});
   const browserCDP=await context.browser().newBrowserCDPSession();
@@ -204,6 +204,8 @@ test('multi-view keeps two source tabs alive with independent mixer controls and
   expect(await second.locator('#main').getAttribute('data-identity')).toBe('original');
 });
 
+test.describe('desktop window focus',()=>{
+test.use({headless:false});
 test('popout command keeps the player focused when creating or reusing the mixer',async({extension})=>{
   await extension.worker.evaluate(()=>chrome.storage.sync.set({autoPip:false}));
   const {page,tabId}=await player(extension);
@@ -237,6 +239,7 @@ test('popout command keeps the player focused when creating or reusing the mixer
     }
   }
   expect(await page.locator('#main').getAttribute('data-identity')).toBe('original');
+});
 });
 
 test('mixer requests valid seeks, rejects missing buffer, and holds survive panel closure',async({extension})=>{
