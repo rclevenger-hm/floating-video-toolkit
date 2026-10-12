@@ -25,14 +25,15 @@ for (const showButton of [false,true]) test(`toolbar opens and closes native PiP
   await extension.worker.evaluate(value=>chrome.storage.sync.set({showButton:value,autoPip:false}),showButton);
   const {page}=await player(extension);
   const cdp=await extension.context.newCDPSession(page);
+  const browserCDP=await extension.context.browser().newBrowserCDPSession();
   const {targetInfo}=await cdp.send('Target.getTargetInfo');
   const read=async expression=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true,userGesture:false})).result.value;
   // Playwright evaluate() supplies a gesture by default. Let setup gestures
   // expire and use raw CDP reads so they cannot hide toolbar activation bugs.
   await expect.poll(()=>read('navigator.userActivation.isActive'),{timeout:8000}).toBe(false);
-  await cdp.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
+  await browserCDP.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
   await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(true);
-  await cdp.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
+  await browserCDP.send('Extensions.triggerAction',{id:extension.id,targetId:targetInfo.targetId});
   await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(false);
 });
 
