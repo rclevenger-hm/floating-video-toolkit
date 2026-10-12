@@ -220,3 +220,23 @@ test('stale mixer documents cannot control a navigated source and source pages c
   expect(result.status).not.toBe('ok');
   await expect.poll(()=>page.locator('#main').evaluate(v=>v.paused)).toBe(false);
 });
+
+test('toolbar recovers an existing video tab after reinstall without reloading its player',async({extension})=>{
+  const {page}=await player(extension);
+  await page.locator('#main').evaluate(v=>v.dataset.session='keep-playing');
+  const browserCDP=await extension.context.browser().newBrowserCDPSession();
+  const cdp=await extension.context.newCDPSession(page);
+  const {targetInfos}=await browserCDP.send('Target.getTargets',{filter:[{type:'tab',exclude:false}]});
+  const target=targetInfos.find(t=>t.url===page.url());
+  await browserCDP.send('Extensions.uninstall',{id:extension.id});
+  const loaded=extension.context.waitForEvent('serviceworker');
+  const {id}=await browserCDP.send('Extensions.loadUnpacked',{path:path.resolve(__dirname,'../..')});
+  const worker=await loaded;
+  await worker.evaluate(()=>chrome.storage.sync.set({autoPip:false,showButton:true}));
+  const read=async expression=>(await cdp.send('Runtime.evaluate',{expression,returnByValue:true,userGesture:false})).result.value;
+  await expect.poll(()=>read('navigator.userActivation.isActive'),{timeout:8000}).toBe(false);
+  await browserCDP.send('Extensions.triggerAction',{id,targetId:target.targetId});
+  await expect.poll(()=>read('!!document.pictureInPictureElement')).toBe(true);
+  expect(await read('document.querySelector("#main").dataset.session')).toBe('keep-playing');
+  await expect(page.locator('#fpip-button')).toHaveCount(1);
+});

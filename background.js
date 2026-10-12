@@ -3,8 +3,11 @@ importScripts("multi-view.js");
 
 // Probe every accessible frame, then send the action to exactly one document.
 // Both functions execute in the content script's isolated world.
-function inspectFrame() {
-  return globalThis.__fpipController?.snapshot() || {host: location.hostname};
+async function inspectFrame() {
+  const controller = globalThis.__fpipController;
+  if (!controller) return {host:location.hostname, missingController:true};
+  if (controller.ready) await controller.ready;
+  return controller.snapshot();
 }
 async function injectedToggle(disabledHosts = [], tabHost = "", action = "toggle-pip") {
   const hosts = [tabHost, location.hostname];
@@ -18,30 +21,68 @@ async function injectedToggle(disabledHosts = [], tabHost = "", action = "toggle
   return controller.run(action);
 }
 const pendingActions = new Set();
-async function callToggle(tabId, action = "toggle-pip") {
-  if (pendingActions.has(tabId)) return {status: "busy"};
+function callToggle(tabId, action = "toggle-pip") {
+  if (pendingActions.has(tabId)) return Promise.resolve({status:"busy"});
   pendingActions.add(tabId);
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    const {disabledHosts = []} = await chrome.storage.sync.get({disabledHosts: []});
-    const tabHost = hostOf(tab.url);
-    if (FloatingVideoCore.isDisabled(disabledHosts, [tabHost])) return {status: "disabled"};
-    const results = await chrome.scripting.executeScript({target:{tabId,allFrames:true},func:inspectFrame});
-    const chosen = FloatingVideoCore.chooseFrame(results, disabledHosts, tabHost);
-    if (!chosen) return {status: "no-video"};
-    // documentIds prevent a navigation between probe and action selecting a new page.
-    const target = chosen.documentId ? {tabId,documentIds:[chosen.documentId]} : {tabId,frameIds:[chosen.frameId]};
-    const replies = await chrome.scripting.executeScript({target,func:injectedToggle,args:[disabledHosts,tabHost,action]});
-    return replies[0]?.result || {status: "unavailable"};
-  } catch (error) {
+  // Chrome carries an extension click's user gesture into API callbacks.
+  // Keep the entire probe/action chain in those callbacks: an async continuation
+  // in a service worker can lose the gesture before requestPictureInPicture.
+  return new Promise(resolve => {
+    const finish = result => { pendingActions.delete(tabId); resolve(result); };
+    const failed = () => {
+      const error = chrome.runtime.lastError;
+      if (!error) return false;
+      console.warn("[Floating PiP] action:", error.message);
+      finish({status:"unavailable"}); return true;
+    };
+    const execute = (details, next) => {
+      try { chrome.scripting.executeScript(details, replies => {
+        if (failed()) return;
+        try { next(replies || []); }
+        catch (error) { console.warn("[Floating PiP] action:", error.message); finish({status:"unavailable"}); }
+      }); }
+      catch (error) { console.warn("[Floating PiP] action:", error.message); finish({status:"unavailable"}); }
+    };
+    chrome.tabs.get(tabId, tab => {
+      if (failed()) return;
+      chrome.storage.sync.get({disabledHosts:[]}, settings => {
+        if (failed()) return;
+        const disabledHosts = settings?.disabledHosts || [];
+        const tabHost = hostOf(tab.url);
+        if (FloatingVideoCore.isDisabled(disabledHosts, [tabHost])) return finish({status:"disabled"});
+        const probe = mayInstall => execute({target:{tabId,allFrames:true},func:inspectFrame}, results => {
+          const missing = results.filter(item => item.result?.missingController &&
+            !FloatingVideoCore.isDisabled(disabledHosts, [item.result.host]));
+          if (mayInstall && missing.length) {
+            // Tabs already open when the extension was installed/reloaded have
+            // no controller in the new isolated world. Initialize only those
+            // documents, then await their settings before choosing a player.
+            const documentIds = missing.map(item => item.documentId);
+            const target = documentIds.every(Boolean) ? {tabId,documentIds} : {tabId,frameIds:missing.map(item => item.frameId)};
+            const files = chrome.runtime.getManifest().content_scripts.flatMap(script => script.js || []);
+            return execute({target,files}, () => probe(false));
+          }
+          const chosen = FloatingVideoCore.chooseFrame(results, disabledHosts, tabHost);
+          if (!chosen) return finish({status:missing.length ? "reload" : "no-video"});
+          // Pin the probed document so navigation cannot redirect the action.
+          const target = chosen.documentId ? {tabId,documentIds:[chosen.documentId]} : {tabId,frameIds:[chosen.frameId]};
+          execute({target,func:injectedToggle,args:[disabledHosts,tabHost,action]}, replies => finish(replies[0]?.result || {status:"unavailable"}));
+        });
+        probe(true);
+      });
+    });
+  }).catch(error => {
     console.warn("[Floating PiP] action:", error.message);
-    return {status: "unavailable"};
-  } finally { pendingActions.delete(tabId); }
+    return {status:"unavailable"};
+  }).finally(() => pendingActions.delete(tabId));
 }
 
 const STATUS_LABELS = {
   disabled:"Disabled on this site", "no-video":"Start a video, then try again. Reload the page after installing.",
   unavailable:"Unable to control this player. Check site access and reload the page.",
+  "needs-gesture":"Chrome requires a fresh click. Click PiP beside the video or reload this page and try the toolbar again.",
+  "pip-blocked":"This page or browser policy blocks Picture-in-Picture.",
+  "pip-unsupported":"This browser or player does not support Picture-in-Picture.",
   "embedded-layout":"In-page layouts require a top-page video. Use native PiP for embedded players.",
   reload:"Reload the page to enable Floating Video.", busy:"A video action is already running."
 };

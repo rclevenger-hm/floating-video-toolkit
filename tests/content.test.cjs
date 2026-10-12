@@ -2,6 +2,35 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {content,environment,flush}=require('./helpers/dom.cjs');
 
+test('page button needs visible loaded video and follows its bounds',async t=>{
+  const empty=await content({settings:{showButton:true},html:'<h1>Job search</h1>'});t.after(async()=>{await empty.w.chrome.storage.sync.set({showButton:false});empty.close();});
+  assert.equal(empty.w.document.getElementById('fpip-button'),null);
+  const e=await content({settings:{showButton:true}});t.after(async()=>{await e.w.chrome.storage.sync.set({showButton:false});e.close();});
+  const doc=e.w.document,v=doc.querySelector('video');
+  const refresh=()=>[...e.intervals.values()].find(i=>i.ms===2000).fn();
+  assert.ok(doc.getElementById('fpip-button'));
+  v.getBoundingClientRect=()=>({width:640,height:360,left:50,top:150,right:690,bottom:510});
+  refresh();assert.equal(doc.getElementById('fpip-button').style.top,'156px');
+  assert.equal(doc.getElementById('fpip-button').style.left,'614px');
+  const parent=doc.createElement('div');v.before(parent);parent.append(v);
+  parent.style.opacity='0';refresh();assert.equal(doc.getElementById('fpip-button'),null);
+  parent.style.opacity='1';refresh();assert.ok(doc.getElementById('fpip-button'));
+  v.getBoundingClientRect=()=>({width:640,height:360,left:50,top:2000,right:690,bottom:2360});
+  refresh();assert.equal(doc.getElementById('fpip-button'),null);
+  v.remove();refresh();assert.equal(doc.getElementById('fpip-button'),null);
+});
+
+test('page button opens PiP synchronously from its click without a worker round trip',async t=>{
+  const e=await content({settings:{showButton:true}});t.after(async()=>{await e.w.chrome.storage.sync.set({showButton:false});e.close();});
+  let clicked=false,requested=false;
+  e.w.document.querySelector('video').requestPictureInPicture=async()=>{assert.equal(clicked,true);requested=true;};
+  e.w.chrome.runtime.sendMessage=async()=>{throw Error('Unexpected worker round trip');};
+  clicked=true;e.w.document.getElementById('fpip-button').click();clicked=false;
+  assert.equal(requested,true);await flush();
+  await e.w.chrome.storage.sync.set({showButton:false});
+  assert.equal(e.w.document.getElementById('fpip-button'),null);
+});
+
 test('embedded players inherit the top-page exclusion before modifying video flags',async t=>{
   const e=await content({url:'https://player.example/embed',tabHost:'top.example',settings:{disabledHosts:['top.example']}});t.after(e.close);
   assert.equal(e.w.__fpipController.snapshot().enabled,false);
@@ -134,4 +163,13 @@ test('explicit pause and site disable cancel timed resume',async t=>{
   await e.w.chrome.storage.sync.set({disabledHosts:['top.example']});
   await e.w.chrome.storage.sync.set({disabledHosts:[]});
   assert.equal(c.snapshot().media.holding,false);assert.equal(v.paused,true);
+});
+
+
+test('PiP rejections report an actionable reason instead of silently failing',async t=>{
+  const e=await content();t.after(e.close);const video=e.w.document.querySelector('video');
+  for (const [name,status] of [['NotAllowedError','needs-gesture'],['SecurityError','pip-blocked'],['NotSupportedError','pip-unsupported']]) {
+    video.requestPictureInPicture=async()=>{throw new e.w.DOMException('Test rejection',name);};
+    assert.equal((await e.w.__fpipController.run('toggle-pip')).status,status);
+  }
 });
