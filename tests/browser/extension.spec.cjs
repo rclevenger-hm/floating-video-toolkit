@@ -1,8 +1,8 @@
 const {test:base,expect,chromium}=require('@playwright/test');
 const path=require('node:path');
-const test=base.extend({extension:async({},use)=>{
+const test=base.extend({desktop:[false,{option:true}],extension:async({desktop},use)=>{
   const root=path.resolve(__dirname,'../..');
-  const context=await chromium.launchPersistentContext('',{channel:'chromium',headless:true,viewport:{width:1280,height:960},
+  const context=await chromium.launchPersistentContext('',{channel:'chromium',headless:!desktop,viewport:{width:1280,height:960},
     ignoreDefaultArgs:['--disable-extensions'],
     args:['--enable-unsafe-extension-debugging']});
   const browserCDP=await context.browser().newBrowserCDPSession();
@@ -166,7 +166,15 @@ test('multi-view keeps two source tabs alive with independent mixer controls and
   const redzone=mixer.locator('.player').filter({hasText:'RedZone fixture'}),chargers=mixer.locator('.player').filter({hasText:'Chargers fixture'});
   await expect(mixer.locator('.player')).toHaveCount(2);
   await redzone.getByRole('button',{name:'Pop out',exact:true}).click();
+  await expect.poll(()=>extension.worker.evaluate(async({id,original})=>{
+    const tab=await chrome.tabs.get(id);
+    return tab.windowId!==original && (await chrome.windows.getLastFocused()).id===tab.windowId;
+  },{id:firstId,original:originalWindowId})).toBe(true);
   await chargers.getByRole('button',{name:'Pop out',exact:true}).click();
+  await expect.poll(()=>extension.worker.evaluate(async({id,original})=>{
+    const tab=await chrome.tabs.get(id);
+    return tab.windowId!==original && (await chrome.windows.getLastFocused()).id===tab.windowId;
+  },{id:secondId,original:originalWindowId})).toBe(true);
   await expect.poll(()=>extension.worker.evaluate(async({ids,original})=>{
     const tabs=await Promise.all(ids.map(id=>chrome.tabs.get(id)));
     return tabs.every(t=>t.windowId!==original);
@@ -194,6 +202,44 @@ test('multi-view keeps two source tabs alive with independent mixer controls and
   await expect.poll(()=>extension.worker.evaluate(async id=>(await chrome.tabs.get(id)).windowId,secondId)).toBe(originalWindowId);
   await expect(second.locator('#fpip-player')).toHaveCount(0);
   expect(await second.locator('#main').getAttribute('data-identity')).toBe('original');
+});
+
+test.describe('desktop window focus',()=>{
+test.use({desktop:true});
+test('popout command keeps the player focused when creating or reusing the mixer',async({extension})=>{
+  await extension.worker.evaluate(()=>chrome.storage.sync.set({autoPip:false}));
+  const {page,tabId}=await player(extension);
+  await page.locator('#main').evaluate(v=>v.dataset.identity='original');
+  for (let attempt=0;attempt<3;attempt++) {
+    if (attempt>0) {
+      // Reuse the existing mixer, including the pre-Chrome-116 lookup fallback.
+      await extension.worker.evaluate(async attempt=>{
+        if (attempt===2) chrome.runtime.getContexts=undefined;
+        await FloatingVideoMultiView.openMixer();
+      },attempt);
+      // Model separate user actions: let opening the mixer finish activation
+      // before requesting the player, rather than racing two window activations.
+      const mixer=extension.context.pages().find(p=>p.url()===`chrome-extension://${extension.id}/mixer.html`);
+      const mixerWindow=await mixer.evaluate(async()=> (await chrome.windows.getCurrent()).id);
+      await expect.poll(()=>extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id)).toBe(mixerWindow);
+    }
+    const state=await extension.worker.evaluate(async id=>{
+      const result=await performAction(id,'popout-player');
+      const tab=await chrome.tabs.get(id);
+      return {status:result.status,player:tab.windowId};
+    },tabId);
+    expect(state.status).toBe('ok');
+    // Window creation resolves before its tab finishes navigating to mixer.html.
+    await expect.poll(()=>extension.context.pages().filter(p=>p.url()===`chrome-extension://${extension.id}/mixer.html`).length).toBe(1);
+    try {
+      await expect.poll(()=>extension.worker.evaluate(async()=> (await chrome.windows.getLastFocused()).id),{message:`attempt ${attempt}`}).toBe(state.player);
+    } catch (error) {
+      console.log('Focus failure',attempt,state,await extension.worker.evaluate(async()=>({windows:await chrome.windows.getAll(),saved:await chrome.storage.session.get('multiViewWindows')})));
+      throw error;
+    }
+  }
+  expect(await page.locator('#main').getAttribute('data-identity')).toBe('original');
+});
 });
 
 test('mixer requests valid seeks, rejects missing buffer, and holds survive panel closure',async({extension})=>{

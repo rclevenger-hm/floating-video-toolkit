@@ -35,7 +35,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npm run test:browser
+      - name: Run browser tests with a desktop window manager
+        run: |
+          sudo apt-get install -y openbox
+          xvfb-run --auto-servernum sh -c 'openbox >/tmp/fvt-openbox.log 2>&1 & exec npm run test:browser'
       - uses: actions/upload-artifact@v4
         if: always()
         with:

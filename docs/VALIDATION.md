@@ -4,11 +4,13 @@
 
 Run `npm ci`, `npm run check`, and `npm test`. The Node/DOM tests cover exclusion policy, frame selection, playback commands, shortcut routing, mini-player placement, site cleanup, original styles, caption cancellation, smart-speed bypass, settings validation, and storage errors. Multi-view tests cover independent window state, worker restart restoration, missing return windows, restricted senders, video/source tokens, seek gaps and evicted buffers, timed hold cancellation, and blocked resume.
 
-Browser tests use `@playwright/test` and a disposable Chromium profile loaded with the extension. Run `npx playwright install --with-deps chromium`, then `npm run test:browser`. The fixture server is started automatically; manual inspection is available with `node scripts/fixture-server.cjs` at `http://127.0.0.1:43123/player.html`. The included short WebM is generated test footage with no external media dependency.
+Browser tests use `@playwright/test` and a disposable Chromium profile loaded with the extension. Run `npx playwright install --with-deps chromium`, then `npm run test:browser` from a desktop session. The focus test uses headed Chromium: on a Linux CI host, run under Xvfb with Openbox as shown in the workflow. The fixture server is started automatically; manual inspection is available with `node scripts/fixture-server.cjs` at `http://127.0.0.1:43123/player.html`. The included short WebM is generated test footage with no external media dependency.
 
 The browser checks exercise the real extension worker, settings storage, cross-origin frame policy, command selection, four corner positions, ultrawide player geometry, cleanup, and small-screen settings layout. Multi-view browser cases cover two simultaneous source-tab pop-outs, independent audio/playback controls, restoration without replacing the video, seek requests, hold resume after closing the mixer, and stale navigation rejection. Native PiP tests trigger the actual extension toolbar action through browser-level DevTools, after page activation expires, with the page button on and off. Additional cases cover hidden/offscreen/removed video, cross-origin page buttons, and recovery after reinstall without reloading the source tab.
 
 The multi-view tests verify ordinary browser pop-outs, not multiple native PiP windows. The native PiP tests verify opening and closing a single window; passing CI does not demonstrate multi-PiP support in Chrome. Screenshots are included in the `browser-results` CI artifact. They do not claim streaming-provider compatibility.
+
+Window-focus tests verify that pop-outs request foreground focus and the companion mixer does not take it, including reuse of an existing player/mixer. The desktop case runs in headed Chromium under Xvfb/Openbox in CI because headless Chrome can report several windows as focused simultaneously. Unit tests cover restoring minimized windows and preserving maximized state. These checks do not establish stacking behavior against other applications or native PiP behavior on Windows/macOS.
 
 ## Manual checks before wider distribution
 
@@ -21,6 +23,7 @@ The multi-view tests verify ordinary browser pop-outs, not multiple native PiP w
 - Open the mini-player, check corners 1–4, resize the browser, type digits into a form, and press Escape.
 - Disable the top-page hostname with an embedded video present, then re-enable it.
 - Pop out two streams into ordinary browser windows, confirm they can be covered by other applications, balance their audio, use a DVR rewind and timed hold on the faster stream, then return both tabs. Test ad breaks, source changes, a missing original browser window, and browser sleep.
+- Open a player from both the mixer and the pop-out command: it should appear in front of the browser/mixer. Minimize it and use **Focus** in the mixer to restore it. Repeat with the mixer already open. Check native PiP separately against other desktop applications and fullscreen windows.
 - On streaming services you use, separately test each experimental feature and record browser/site versions. Turn off any incompatible feature.
 
 ## Package and release
