@@ -138,13 +138,15 @@ npm run package
 
 The package is written to `dist/floating-video-toolkit-VERSION.zip` with a SHA-256 checksum. It contains only extension assets, this README, and privacy documentation. Tests, fixtures, dependency folders, and development scripts are excluded.
 
-CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.22.1.md).
+CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.22.2.md).
 
 ## Troubleshooting
 
 | Symptom | What to check |
 | --- | --- |
 | Opening a second PiP replaces the first | This is Chrome’s single native PiP window limit across tabs. Use **Multi-view & audio mixer → Pop out** for several ordinary browser windows; they are not always on top. |
+| A browser pop-out opens behind another window | Update to 1.22.2 or later. New pop-outs request foreground focus and the companion mixer opens without taking it. Use the mixer's **Focus** button to bring a player back, including from a minimized window. Other apps can still cover these ordinary windows afterward. |
+| Native PiP from the toolbar or page button appears behind another app | Native PiP's window order is managed by Chrome and the OS; the video PiP API does not expose a focus or always-on-top setter. Close and reopen PiP. If it persists, record the OS, Chrome version, site, and whether the covering app is fullscreen. The browser pop-out focus fix does not address this separate case. |
 | Nothing happens | Start playback, reload the page after installing, confirm site access, and inspect the toolbar tooltip for the last action result. |
 | Wrong video is controlled | Click the intended video before using the toolbar or shortcut. Hidden and unloaded videos are excluded from selection. |
 | A shortcut does not work | Open Chrome's shortcut settings; a browser/OS/extension conflict may prevent assignment. |

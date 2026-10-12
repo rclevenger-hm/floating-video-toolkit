@@ -10,6 +10,8 @@ The browser checks exercise the real extension worker, settings storage, cross-o
 
 The multi-view tests verify ordinary browser pop-outs, not multiple native PiP windows. The native PiP tests verify opening and closing a single window; passing CI does not demonstrate multi-PiP support in Chrome. Screenshots are included in the `browser-results` CI artifact. They do not claim streaming-provider compatibility.
 
+Window-focus tests verify that pop-outs request foreground focus and the companion mixer does not take it, including reuse of an existing player/mixer. Unit tests cover restoring minimized windows and preserving maximized state. Headless browser focus checks do not establish desktop stacking order against other applications or native PiP behavior on Windows/macOS.
+
 ## Manual checks before wider distribution
 
 - Install the extracted package in Chrome and reload open video pages.
@@ -21,6 +23,7 @@ The multi-view tests verify ordinary browser pop-outs, not multiple native PiP w
 - Open the mini-player, check corners 1–4, resize the browser, type digits into a form, and press Escape.
 - Disable the top-page hostname with an embedded video present, then re-enable it.
 - Pop out two streams into ordinary browser windows, confirm they can be covered by other applications, balance their audio, use a DVR rewind and timed hold on the faster stream, then return both tabs. Test ad breaks, source changes, a missing original browser window, and browser sleep.
+- Open a player from both the mixer and the pop-out command: it should appear in front of the browser/mixer. Minimize it and use **Focus** in the mixer to restore it. Repeat with the mixer already open. Check native PiP separately against other desktop applications and fullscreen windows.
 - On streaming services you use, separately test each experimental feature and record browser/site versions. Turn off any incompatible feature.
 
 ## Package and release

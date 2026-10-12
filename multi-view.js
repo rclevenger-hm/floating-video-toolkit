@@ -62,15 +62,20 @@
         func:async active => { await globalThis.__fpipController?.setMultiView(active); },args:[active]});
     } catch (_) {} // Navigation or tab closure: initialization reads session state.
   }
-  async function openMixer() {
+  async function focusTab(tab) {
+    const window = await chrome.windows.get(tab.windowId);
+    await chrome.tabs.update(tab.id,{active:true});
+    // Restore minimized windows without changing a maximized/fullscreen layout.
+    await chrome.windows.update(tab.windowId,window.state === 'minimized' ? {state:'normal',focused:true} : {focused:true});
+  }
+  async function openMixer({focus = true} = {}) {
     if (mixerOpen) return mixerOpen;
     mixerOpen = (async () => {
       const url = chrome.runtime.getURL('mixer.html');
       const existing = (await chrome.tabs.query({})).find(tab => tab.url === url);
       if (existing) {
-        await chrome.windows.update(existing.windowId,{focused:true});
-        await chrome.tabs.update(existing.id,{active:true});
-      } else await chrome.windows.create({url,type:'popup',width:620,height:820});
+        if (focus) await focusTab(existing);
+      } else await chrome.windows.create({url,type:'popup',width:620,height:820,focused:focus});
       return {status:'ok'};
     })();
     try { return await mixerOpen; } finally { mixerOpen = null; }
@@ -81,14 +86,14 @@
       if (check.status !== 'ok') return check;
       const tab = await chrome.tabs.get(target.tabId), saved = await records();
       if (saved[tab.id]?.windowId === tab.windowId) {
-        await chrome.windows.update(tab.windowId,{focused:true});
+        await focusTab(tab);
         return {status:'ok'};
       }
       // Preserve identity, cookies, DRM sessions and playback: move the existing tab.
       const originalWindowId = tab.windowId, index = tab.index;
       await setMode(tab.id,true);
       let popup;
-      try { popup = await chrome.windows.create({tabId:tab.id,type:'popup',width:720,height:480,focused:false}); }
+      try { popup = await chrome.windows.create({tabId:tab.id,type:'popup',width:720,height:480,focused:true}); }
       catch (e) { await setMode(tab.id,false); throw e; }
       saved[tab.id] = {windowId:popup.id,originalWindowId,index};
       await chrome.storage.session.set({multiViewWindows:saved});
@@ -100,7 +105,8 @@
     const target = await scanTab(await chrome.tabs.get(tabId));
     if (!target) return {status:'no-video'};
     const result = await popout(target);
-    await openMixer();
+    // The requested player stays in front; its companion mixer must not cover it.
+    if (result.status === 'ok') await openMixer({focus:false});
     return result;
   }
   async function restore(tabId) {
@@ -143,8 +149,7 @@
     if (!validTarget(msg.target)) return {status:'invalid'};
     if (msg.action === 'focus') {
       const tab = await chrome.tabs.get(msg.target.tabId);
-      await chrome.windows.update(tab.windowId,{focused:true});
-      await chrome.tabs.update(tab.id,{active:true});
+      await focusTab(tab);
       return {status:'ok'};
     }
     if (!['inspect','volume','mute','unmute','play','pause','seek','hold','cancel-hold','toggle-cinema'].includes(msg.action)) return {status:'invalid'};

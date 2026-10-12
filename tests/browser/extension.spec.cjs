@@ -166,7 +166,15 @@ test('multi-view keeps two source tabs alive with independent mixer controls and
   const redzone=mixer.locator('.player').filter({hasText:'RedZone fixture'}),chargers=mixer.locator('.player').filter({hasText:'Chargers fixture'});
   await expect(mixer.locator('.player')).toHaveCount(2);
   await redzone.getByRole('button',{name:'Pop out',exact:true}).click();
+  await expect.poll(()=>extension.worker.evaluate(async({id,original})=>{
+    const tab=await chrome.tabs.get(id);
+    return tab.windowId!==original && (await chrome.windows.getLastFocused()).id===tab.windowId;
+  },{id:firstId,original:originalWindowId})).toBe(true);
   await chargers.getByRole('button',{name:'Pop out',exact:true}).click();
+  await expect.poll(()=>extension.worker.evaluate(async({id,original})=>{
+    const tab=await chrome.tabs.get(id);
+    return tab.windowId!==original && (await chrome.windows.getLastFocused()).id===tab.windowId;
+  },{id:secondId,original:originalWindowId})).toBe(true);
   await expect.poll(()=>extension.worker.evaluate(async({ids,original})=>{
     const tabs=await Promise.all(ids.map(id=>chrome.tabs.get(id)));
     return tabs.every(t=>t.windowId!==original);
@@ -194,6 +202,25 @@ test('multi-view keeps two source tabs alive with independent mixer controls and
   await expect.poll(()=>extension.worker.evaluate(async id=>(await chrome.tabs.get(id)).windowId,secondId)).toBe(originalWindowId);
   await expect(second.locator('#fpip-player')).toHaveCount(0);
   expect(await second.locator('#main').getAttribute('data-identity')).toBe('original');
+});
+
+test('popout command keeps the player focused when creating or reusing the mixer',async({extension})=>{
+  await extension.worker.evaluate(()=>chrome.storage.sync.set({autoPip:false}));
+  const {page,tabId}=await player(extension);
+  await page.locator('#main').evaluate(v=>v.dataset.identity='original');
+  for (let attempt=0;attempt<2;attempt++) {
+    const state=await extension.worker.evaluate(async id=>{
+      // On the second attempt this puts the existing mixer in front first.
+      const url=chrome.runtime.getURL('mixer.html');
+      if ((await chrome.tabs.query({})).some(t=>t.url===url)) await FloatingVideoMultiView.openMixer();
+      const result=await performAction(id,'popout-player');
+      const tab=await chrome.tabs.get(id);
+      return {status:result.status,player:tab.windowId,focused:(await chrome.windows.getLastFocused()).id,
+        mixers:(await chrome.tabs.query({})).filter(t=>t.url===url).length};
+    },tabId);
+    expect(state.status).toBe('ok');expect(state.focused).toBe(state.player);expect(state.mixers).toBe(1);
+  }
+  expect(await page.locator('#main').getAttribute('data-identity')).toBe('original');
 });
 
 test('mixer requests valid seeks, rejects missing buffer, and holds survive panel closure',async({extension})=>{
