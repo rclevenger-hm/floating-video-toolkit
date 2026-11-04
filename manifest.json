@@ -103,6 +103,8 @@
         "page-state.js",
         "player-layout.js",
         "stream-sync.js",
+        "feed-navigation.js",
+        "feed-window.js",
         "content.js"
       ]
     }
