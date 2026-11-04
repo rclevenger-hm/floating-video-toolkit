@@ -32,6 +32,7 @@
   };
   let viewSettings = {...core.VIEW_DEFAULTS};
   let layout = null;
+  let feedWindow = null;
   let multiView = false;
   let adj = { ...ADJ_DEFAULTS }; // display adjustments (CSS-only, DRM-safe)
 
@@ -46,14 +47,14 @@
   document.addEventListener("pointerdown", rememberVideo, true);
   document.addEventListener("contextmenu", rememberVideo, true);
   function getActiveVideo() {
-    return document.pictureInPictureElement || layout?.video || core.pickVideo(document.querySelectorAll("video"), selectedVideo, selectedAt);
+    return document.pictureInPictureElement || feedWindow?.video || layout?.video || core.pickVideo(document.querySelectorAll("video"), selectedVideo, selectedAt);
   }
   const streamSync = FloatingVideoSync.create({getVideo:getActiveVideo});
   window.addEventListener('pagehide',() => streamSync.cancel());
   globalThis.__fpipController = {
     snapshot() {
       const video = getActiveVideo();
-      return {enabled, host, ancestors:policyHosts(), inPip:!!document.pictureInPictureElement, inLayout:!!layout?.mode,
+      return {enabled, host, ancestors:policyHosts(), inPip:!!document.pictureInPictureElement || !!feedWindow?.active, inLayout:!!layout?.mode,
         candidate: enabled && video ? core.describeVideo(video, video === selectedVideo ? selectedAt : 0) : null,
         media: enabled && video ? streamSync.snapshot(video) : null};
     },
@@ -77,6 +78,7 @@
     async setMultiView(active) {
       multiView = active === true;
       if (multiView) {
+        feedWindow?.close();
         userWantsPip = false;
         stopPulse(); stopAdWatch(); ssStop();
         if (document.pictureInPictureElement) await document.exitPictureInPicture().catch(() => {});
@@ -106,6 +108,7 @@
         if (inAd && adVideo === video) { prevMuted = video.muted; adMuteOverride=video.muted; }
       } else if (["toggle-mini","toggle-cinema"].includes(action) || /^snap-[1-4]$/.test(action)) {
         if (window.self !== window.top) return {status:"embedded-layout"};
+        feedWindow?.close();
         if (document.pictureInPictureElement) await document.exitPictureInPicture();
         if (action.startsWith("snap-")) {
           viewSettings.corner = Number(action.slice(-1));
@@ -185,6 +188,7 @@
     ccStop();
     syncAutoPipHandler();
     layout?.close();
+    feedWindow?.close();
     adjustedStyles.restoreAll();
     restoreFlags();
     stopButtonWatch();
@@ -267,7 +271,7 @@
           "enterpictureinpicture",
           async () => {
             const v = getActiveVideo();
-            if (!enabled || !autoPip || multiView || !v || document.pictureInPictureElement) return;
+            if (!enabled || !autoPip || multiView || !v || feedWindow?.active || document.pictureInPictureElement) return;
             stripFlag(v);
             try {
               await v.requestPictureInPicture();
@@ -353,6 +357,7 @@
     pipFailure = "unavailable";
     busy = true;
     try {
+      if (feedWindow?.active) { feedWindow.close(); return true; }
       if (document.pictureInPictureElement) {
         userWantsPip = false; // explicit user exit -> stop following episodes
         stopPulse();
@@ -360,7 +365,9 @@
         return true;
       }
       const video = getActiveVideo();
+      layout?.close();
       if (!video) { pipFailure = "no-video"; return false; }
+      if (feedWindow?.supported && await feedWindow.open(video)) return true;
       return await enterPip(video);
     } catch (err) {
       console.warn("[Floating PiP] request failed:", err && err.message);
@@ -372,7 +379,7 @@
   // A gesture-free call only succeeds while another element is already in PiP
   // (Chrome treats it as a swap) -- that's what carries us across episodes.
   async function enterPip(video) {
-    if (!enabled || !video) return false;
+    if (!enabled || !video || feedWindow?.active) return false;
     stripFlag(video);
     if (typeof video.requestPictureInPicture !== "function") { pipFailure = "pip-unsupported"; return false; }
     if (document.pictureInPictureEnabled === false) { pipFailure = "pip-blocked"; return false; }
@@ -1325,7 +1332,7 @@
   }
 
   function ccScrape(v) {
-    const vr = v.getBoundingClientRect();
+    const vr = (v === feedWindow?.video && feedWindow.sourceRect) || v.getBoundingClientRect();
     const nodes = ccQueryAll();
     const cands = [];
     for (const el of nodes) {
@@ -1466,7 +1473,7 @@
   }
 
   function ccTick() {
-    const v = document.pictureInPictureElement;
+    const v = document.pictureInPictureElement || feedWindow?.video;
     if (!(v instanceof HTMLVideoElement)) return ccStop();
     if (ccMode === "native" && ccNative) {
       // Players that draw their own overlay flip the track back to "hidden";
@@ -1627,6 +1634,11 @@
     }
   }
 
+  if (globalThis.FloatingVideoNavigation && globalThis.FloatingVideoFeedWindow) {
+    const navigation = FloatingVideoNavigation.createNavigator({document,getVideo:getActiveVideo});
+    feedWindow = FloatingVideoFeedWindow.create({getVideo:(scope=document)=>core.pickVideo(scope.querySelectorAll('video')),
+      navigation,onState:notifyPipState,onVideo:video=>{if(video) ccStart(video);else ccStop();}});
+  }
   layout = FloatingVideoLayout.create({getVideo:getActiveVideo,getSettings:()=>viewSettings,onAction:runAction});
   document.addEventListener("keydown", event => {
     if (!enabled || !layout.mode || event.defaultPrevented || event.repeat || event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) return;
@@ -1720,8 +1732,8 @@
       }
       if (changes.ccPip) {
         ccPip = changes.ccPip.newValue === true;
-        if (ccPip && enabled && document.pictureInPictureElement) {
-          ccStart(document.pictureInPictureElement);
+        if (ccPip && enabled && (document.pictureInPictureElement || feedWindow?.video)) {
+          ccStart(document.pictureInPictureElement || feedWindow.video);
         } else if (!ccPip) {
           ccStop();
         }

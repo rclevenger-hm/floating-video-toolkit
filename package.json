@@ -4,7 +4,7 @@
   "private": true,
   "description": "Floating video controls for Chromium browsers",
   "scripts": {
-    "check": "node --check pip-core.js && node --check page-state.js && node --check player-layout.js && node --check background.js && node --check content.js && node --check options.js && node --check stream-sync.js && node --check multi-view.js && node --check mixer.js",
+    "check": "node --check pip-core.js && node --check page-state.js && node --check player-layout.js && node --check background.js && node --check content.js && node --check options.js && node --check stream-sync.js && node --check multi-view.js && node --check mixer.js && node --check feed-navigation.js && node --check feed-window.js",
     "test": "node --test tests/*.test.cjs",
     "test:browser": "playwright test",
     "package": "python3 scripts/package.py"
