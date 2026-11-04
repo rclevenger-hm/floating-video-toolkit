@@ -21,6 +21,9 @@ The toolbar probes accessible frames and controls **one selected video in a tab*
 
 ## Install
 
+Each successful push/merge to **main** publishes a versioned ZIP under [Releases](https://github.com/rclevenger-hm/floating-video-toolkit/releases). This repository uses `main`, not `master`. Download the **floating-video-toolkit-*.zip** asset, not GitHub’s automatically generated source-code ZIP.
+
+
 1. Download the extension ZIP from [Releases](https://github.com/rclevenger-hm/floating-video-toolkit/releases) or the `floating-video-toolkit` artifact from a successful [workflow run](https://github.com/rclevenger-hm/floating-video-toolkit/actions).
 2. Extract the ZIP. Do not try to load the ZIP directly.
 3. Open `chrome://extensions`, enable **Developer mode**, and choose **Load unpacked**.
@@ -30,6 +33,17 @@ The toolbar probes accessible frames and controls **one selected video in a tab*
 You can also clone this repository and load its root directory directly. Chrome is the automated test target. Other Chromium browsers need their own compatibility checks; Firefox and Safari ports are not included.
 
 After an update, reload the extension on `chrome://extensions`. The toolbar initializes already-open video tabs when needed; reload the video page if a site still has stale controls.
+
+## Automatic releases
+
+The validation workflow tests every pull request and main/dev push. After unit tests, browser tests and deterministic packaging all succeed for a **main push**, it publishes that exact commit as a GitHub Release. Pull requests, dev pushes, tag pushes and manual workflow runs do not publish. Failed validation never produces a release. Main runs are not canceled by later merges.
+
+- The source `manifest.json` and `package.json` keep the same three-part base version. Release archives append the workflow run number, for example `1.22.2.27`, with tag `v1.22.2.27`. The packaged manifest is stamped without committing generated version changes back to the repository.
+- Each release contains the browser ZIP, its SHA-256 checksum, build metadata and `INSTALL.md`. Rebuilding the same source with the same release run yields the same archive bytes. Version components must fit Chrome's 0–65535 limit; an exhausted build component fails explicitly rather than wrapping or reusing a version.
+- Publication first prepares a draft, verifies assets, then publishes. Retrying a run reuses only the exact matching tag/commit/assets; mismatches stop instead of overwriting a release. Re-run the failed main workflow to recover a publication failure. The release job alone has `contents: write`; tests have read-only access.
+- Immediately before publication, the job checks main’s current head and marks only a matching commit as Latest. Older runs publish without requesting Latest; this head check and GitHub’s publish operation are not atomic. Retain this workflow file/name and increasing base versions to avoid version collisions; renamed/replaced workflows or reduced base versions need a deliberate version migration.
+
+These are **unpacked Chromium extension builds**, not signed CRX files or Chrome Web Store submissions. Users extract the ZIP, enable Developer mode, then choose Load unpacked. Updates are manual: replace the installed folder's files, reload the extension and reload video tabs. Store distribution, automatic updates, Firefox/Safari packages and enterprise restrictions are not handled by this pipeline. See [Chrome’s unpacked installation instructions](https://developer.chrome.com/docs/extensions/get-started/tutorial/hello-world#load-unpacked).
 
 ## Multiple streams in ordinary browser windows
 
@@ -131,14 +145,15 @@ Use Node.js 22 or 24 and Python 3.12+ for packaging:
 npm ci
 npm run check
 npm test
+python3 -m unittest discover -s scripts -p 'test_*.py' -v
 npx playwright install --with-deps chromium
 npm run test:browser
 npm run package
 ```
 
-The package is written to `dist/floating-video-toolkit-VERSION.zip` with a SHA-256 checksum. It contains only extension assets, this README, and privacy documentation. Tests, fixtures, dependency folders, and development scripts are excluded.
+The package is written to `dist/floating-video-toolkit-VERSION.zip` with a SHA-256 checksum. It contains only extension assets, this README, installation instructions and documentation. Tests, fixtures, dependency folders, and development scripts are excluded.
 
-CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Matching `vVERSION` tags publish the tested ZIP and checksum after validation. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.22.2.md).
+CI tests Node.js 22 and 24, runs the extension in Chromium against local video fixtures, and packages only after those checks pass. Successful main pushes publish the tested versioned ZIP, checksum, metadata and installation guide; PR/manual/dev runs only validate and package. See [validation](docs/VALIDATION.md), [architecture](docs/ARCHITECTURE.md), and [release notes](docs/releases/v1.22.2.md).
 
 ## Troubleshooting
 
