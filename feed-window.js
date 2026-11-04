@@ -4,6 +4,7 @@
   function create({sourceWindow = window, getVideo, navigation, onState = () => {}, onVideo = () => {}}) {
     const doc = sourceWindow.document;
     let pip = null, video = null, marker = null, originalStyle = null, controls = null;
+    let sourceRect = null;
     let generation = 0, pending = false, switching = false, timer = null, poll = null;
     let lastInput = -Infinity, wheel = 0, wheelAt = 0;
     function restore() {
@@ -13,6 +14,7 @@
       if (canReturn) marker.parentNode.insertBefore(old, marker);
       else { try { old.pause(); } catch (_) {} old.remove(); }
       if (originalStyle === null) old.removeAttribute('style'); else old.setAttribute('style', originalStyle);
+      sourceRect = null;
       marker?.remove(); marker = null; video = null; originalStyle = null;
       if (canReturn && playing && old.paused) old.play().catch(() => {});
     }
@@ -31,6 +33,7 @@
       if (!pip || pip.closed || !next?.isConnected || next.ownerDocument !== doc) return false;
       restore();
       marker = doc.createComment('floating-feed-return'); next.before(marker);
+      sourceRect = next.getBoundingClientRect();
       video = next; originalStyle = next.getAttribute('style');
       const playing = !next.paused;
       pip.document.querySelector('.stage').append(next);
@@ -134,7 +137,7 @@
       } finally { if (id === generation) pending = false; }
     }
     sourceWindow.addEventListener('pagehide', close);
-    return {open,close,navigate,get supported(){return !!sourceWindow.documentPictureInPicture?.requestWindow && sourceWindow.top === sourceWindow && navigation.isSupported();},get active(){return !!pip && !pip.closed;},get video(){return video;}};
+    return {open,close,navigate,get supported(){return !!sourceWindow.documentPictureInPicture?.requestWindow && sourceWindow.top === sourceWindow && navigation.isSupported();},get active(){return !!pip && !pip.closed;},get video(){return video;},get sourceRect(){return sourceRect;}};
   }
   root.FloatingVideoFeedWindow = {create};
 })(globalThis);

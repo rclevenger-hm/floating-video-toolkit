@@ -83,3 +83,26 @@ test('content integration exits mini layout, prevents native auto-PiP, and resto
  let nativeRequested=false;video.requestPictureInPicture=async()=>{nativeRequested=true;};await env.mediaHandlers.get('enterpictureinpicture')?.();assert.equal(nativeRequested,false);
  await w.chrome.storage.sync.set({disabledHosts:['www.youtube.com']});assert.equal(closed,true);assert.equal(track.mode,'hidden');assert.equal(video.parentElement.tagName,'YTD-SHORTS');assert.equal(controller.snapshot().inPip,false);
 });
+test('mirrored captions use the source video rectangle rather than the floating viewport',async t=>{
+ const env=environment({url:'https://www.instagram.com/reels/example/',tabHost:'www.instagram.com',settings:{ccPip:true},html:'<main><video></video><div class="captions">Caption outside the floating viewport</div></main>'});
+ const {w}=env, source=w.document, video=source.querySelector('video'), caption=source.querySelector('.captions');
+ const floating=new JSDOM('',{url:source.URL,pretendToBeVisual:true}), pw=floating.window;
+ let closed=false;Object.defineProperty(pw,'closed',{get:()=>closed});pw.close=()=>{closed=true;pw.dispatchEvent(new pw.Event('pagehide'));};
+ w.documentPictureInPicture={requestWindow:async()=>pw};
+ const sourceRect={left:900,top:300,right:1540,bottom:660,width:640,height:360};
+ const floatingRect={left:0,top:0,right:420,bottom:560,width:420,height:560};
+ video.getBoundingClientRect=()=>video.ownerDocument===source ? sourceRect : floatingRect;
+ caption.getBoundingClientRect=()=>({left:940,top:600,right:1480,bottom:640,width:540,height:40});
+ const tracks=[], track={kind:'captions',label:'fpip',mode:'disabled',cues:[],addCue(cue){this.cues.push(cue);},removeCue(cue){this.cues.splice(this.cues.indexOf(cue),1);}};
+ Object.defineProperty(video,'textTracks',{value:tracks});
+ video.addTextTrack=()=>{tracks.push(track);return track;};
+ w.VTTCue=class {constructor(startTime,endTime,text){Object.assign(this,{startTime,endTime,text});}};
+ env.load(['pip-core.js','page-state.js','player-layout.js','stream-sync.js','feed-navigation.js','feed-window.js','content.js']);await env.flush();
+ t.after(()=>{pw.close();env.close();pw.document.body.innerHTML='';});
+ assert.equal((await w.__fpipController.run('toggle-pip')).status,'ok');assert.equal(video.ownerDocument,pw.document);
+ assert.ok(caption.getBoundingClientRect().left>video.getBoundingClientRect().right,'the two viewport rectangles must not overlap');
+ const tick=Array.from(env.intervals.values()).find(interval=>interval.ms===300);assert.ok(tick,'caption mirroring timer starts');tick.fn();
+ assert.equal(track.mode,'showing');assert.deepEqual(track.cues.map(cue=>cue.text),['Caption outside the floating viewport']);
+ caption.textContent='Updated source caption';tick.fn();assert.deepEqual(track.cues.map(cue=>cue.text),['Updated source caption']);
+ await w.__fpipController.run('toggle-pip');assert.equal(video.ownerDocument,source);assert.equal(track.mode,'disabled');assert.equal(track.cues.length,0);
+});

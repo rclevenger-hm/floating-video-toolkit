@@ -1332,7 +1332,7 @@
   }
 
   function ccScrape(v) {
-    const vr = v.getBoundingClientRect();
+    const vr = (v === feedWindow?.video && feedWindow.sourceRect) || v.getBoundingClientRect();
     const nodes = ccQueryAll();
     const cands = [];
     for (const el of nodes) {
