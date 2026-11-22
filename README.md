@@ -13,6 +13,7 @@ A Chromium extension for single-window native Picture-in-Picture, ordinary brows
 | Mode | What it does | Where it works |
 | --- | --- | --- |
 | Multi-view pop-outs | Opens each service tab in its own resizable window, with a shared audio mixer | Multiple HTTP(S) tabs; retains original players; not always on top |
+| Social feed floating player | Arrow keys and wheel browse existing next/previous controls in an always-on-top Document PiP window | YouTube watch/Shorts, Instagram/Facebook Reels, and TikTok feed/video pages in supporting Chromium browsers |
 | Native Picture-in-Picture | Floats one selected video above other applications | One native PiP window in Chrome across tabs; compatible top-page and embedded videos |
 | Mini-player | Places the video in one of four page corners, with playback controls | Inside the current tab, for top-page videos |
 | Cinema view | Creates a large in-page player with ultrawide fit and crop controls | Inside the current tab, for top-page videos |
@@ -30,6 +31,18 @@ The toolbar probes accessible frames and controls **one selected video in a tab*
 You can also clone this repository and load its root directory directly. Chrome is the automated test target. Other Chromium browsers need their own compatibility checks; Firefox and Safari ports are not included.
 
 After an update, reload the extension on `chrome://extensions`. The toolbar initializes already-open video tabs when needed; reload the video page if a site still has stale controls.
+
+## Browse social videos from the floating window
+
+On a supported top-level YouTube watch/Shorts, Instagram/Facebook Reels, or TikTok feed/video page, start a video and use the toolbar or page PiP button. When Document Picture-in-Picture is available, the extension opens a controllable always-on-top player:
+
+- **Down arrow / scroll down:** next video. **Up arrow / scroll up:** previous video.
+- The window also includes previous, next, play/pause, and close buttons. Focus the floating window for keyboard controls.
+- Scroll gestures are accumulated and throttled to avoid skipping many videos. Modified shortcuts, text fields and slider controls keep their normal behavior.
+- Navigation clicks the source site's existing visible next/previous control. If it is absent, disabled or ambiguous, no navigation is attempted. YouTube watch's previous button depends on the playlist/history the site exposes.
+- The real video briefly returns to its source while the site advances, then moves back into the floating player. Closing the window returns the video and its inline styles to the page. Keep the source tab open.
+
+The controllable window requires the Document PiP API and a top-level supported page. Other pages, embedded players, or unsupported browsers retain native video PiP. **Native video PiP cannot receive extension arrow-key or wheel handlers.** Automatic PiP remains native. Site markup, localized controls, ads and player implementations can affect navigation; tests use deterministic fixtures and do not certify signed-in live-service compatibility. Instagram/Facebook home-feed carousels and arbitrary pages are intentionally excluded to avoid clicking unrelated controls.
 
 ## Multiple streams in ordinary browser windows
 
