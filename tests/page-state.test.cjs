@@ -32,3 +32,21 @@ test('switching videos restores the old selection and preserves later site chang
   ledger.restoreAll();
   assert.equal(active.style.getPropertyValue('filter'),'');
 });
+
+test('repeated writes keep the latest site value, priority, and property removal',()=>{
+  const video=element({filter:'sepia(1)',transform:'rotate(5deg)',color:'red'});
+  const ledger=createStyleLedger();
+  ledger.set(video,'filter','brightness(1.2)');
+  ledger.set(video,'transform','scale(1.2)');
+  video.style.setProperty('filter','brightness(1.2)','important');
+  video.style.removeProperty('transform');
+  for (const zoom of [1.3, 1.4]) {
+    ledger.set(video,'filter',`brightness(${zoom})`);
+    ledger.set(video,'transform',`scale(${zoom})`);
+  }
+  ledger.restoreAll();
+  assert.equal(video.style.getPropertyValue('filter'),'brightness(1.2)');
+  assert.equal(video.style.getPropertyPriority('filter'),'important');
+  assert.equal(video.style.getPropertyValue('transform'),'');
+  assert.equal(video.style.getPropertyValue('color'),'red');
+});
