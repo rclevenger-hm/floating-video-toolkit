@@ -114,6 +114,21 @@ test('ultrawide cinema applies fill and zoom and restores the original layout',a
   expect(await page.locator('#main').evaluate(v=>v.style.transform)).toBe('');
 });
 
+test('reset restores the latest site-owned transform after picture settings reapply',async({extension})=>{
+  const {page,tabId}=await player(extension);
+  const video=page.locator('#main');
+  const readTransform=()=>video.evaluate(el=>el.style.getPropertyValue('transform'));
+  await extension.worker.evaluate(()=>chrome.storage.sync.set({videoAdjust:{zoom:1.2}}));
+  await expect.poll(readTransform).toBe('scale(1.2)');
+  await video.evaluate(el=>el.style.setProperty('transform','rotate(8deg)','important'));
+  await extension.worker.evaluate(()=>chrome.storage.sync.set({videoAdjust:{zoom:1.4}}));
+  await expect.poll(readTransform).toBe('scale(1.4)');
+
+  expect((await command(extension,tabId,'reset-view')).status).toBe('ok');
+  await expect.poll(readTransform).toBe('rotate(8deg)');
+  expect(await video.evaluate(el=>el.style.getPropertyPriority('transform'))).toBe('important');
+});
+
 test('page-button native PiP follows playback shortcuts across tabs',async({extension})=>{
   const {page,tabId}=await player(extension);
   await extension.worker.evaluate(()=>chrome.storage.sync.set({showButton:true}));

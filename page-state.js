@@ -8,7 +8,12 @@
       let props = records.get(element);
       if (!props) records.set(element, props = new Map());
       let rec = props.get(property);
-      if (!rec) props.set(property, rec = {value:element.style.getPropertyValue(property), priority:element.style.getPropertyPriority(property)});
+      const current = element.style.getPropertyValue(property);
+      const priorityNow = element.style.getPropertyPriority(property);
+      // A player write since our last update is the new value to restore.
+      if (!rec || current !== rec.last || priorityNow !== rec.lastPriority) {
+        props.set(property, rec = {value:current, priority:priorityNow});
+      }
       element.style.setProperty(property, value, priority);
       rec.last = element.style.getPropertyValue(property);
       rec.lastPriority = element.style.getPropertyPriority(property);
